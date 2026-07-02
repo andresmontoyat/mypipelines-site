@@ -60,6 +60,6 @@ const strings = {
 
 export type UiKey = keyof typeof strings;
 
-export function t(_lang: string, key: string): string {
+export function t(_lang: string, key: UiKey | `category.${string}`): string {
   return (strings as Record<string, string>)[key] ?? key;
 }
