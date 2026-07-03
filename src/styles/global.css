@@ -108,6 +108,21 @@
   color: var(--color-brand-400);
 }
 
+/* Pagefind search UI — map its CSS vars to site theme tokens so the widget
+   auto-flips with light/dark (default Pagefind colors are light-only and
+   become unreadable on the dark surface). */
+.pagefind-ui {
+  --pagefind-ui-primary: var(--color-brand-600);
+  --pagefind-ui-text: var(--fg);
+  --pagefind-ui-background: var(--surface);
+  --pagefind-ui-border: var(--border-subtle);
+  --pagefind-ui-tag: var(--surface-sunken);
+}
+.dark .pagefind-ui {
+  --pagefind-ui-primary: var(--color-brand-400);
+  --pagefind-ui-background: var(--surface-raised);
+}
+
 /* ToC anchor visibility: offset for sticky header (h2 + h3 only) */
 :where(article h2, article h3) {
   scroll-margin-top: 6rem;
