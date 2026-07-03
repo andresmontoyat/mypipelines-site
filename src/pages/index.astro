@@ -17,10 +17,10 @@ const guides = (await getCollection('guides')).sort(
 <BaseLayout title={t(lang, 'site.title')} lang={lang}>
   <main class="mx-auto max-w-5xl px-4 py-16">
     <section class="text-center">
-      <h1 class="text-fluid-h1 font-bold tracking-tight text-[var(--fg)]">Pipelines CI/CD listos para copiar</h1>
+      <h1 class="text-fluid-h1 font-bold tracking-tight text-[var(--fg)]">Los pipelines que usamos, para que no los armes de cero</h1>
       <p class="mx-auto mt-4 max-w-2xl text-lg text-[var(--fg-muted)]">
-        Workflows reutilizables de GitHub Actions por stack, con GitFlow, security gates y deploy.
-        Copiá el caller de tu stack, reemplazá <code>&lt;org&gt;</code> y andá.
+        GitHub Actions por stack, con GitFlow, gates de seguridad y deploy ya resueltos.
+        En vez de pelearte con el YAML, copiás el de tu stack, cambiás <code>&lt;org&gt;</code> y arrancás.
       </p>
     </section>
 
@@ -55,11 +55,11 @@ const guides = (await getCollection('guides')).sort(
     </section>
 
     <section class="mt-12">
-      <h2 class="text-sm font-semibold uppercase tracking-wide text-[var(--fg-subtle)]">Explorá también</h2>
+      <h2 class="text-sm font-semibold uppercase tracking-wide text-[var(--fg-subtle)]">Más por acá</h2>
       <div class="mt-4 grid grid-cols-1 sm:grid-cols-3 gap-4">
         {[
-          { href: '/actions', title: 'Actions', desc: 'GitHub Actions propias de Codehunters' },
-          { href: '/gradle', title: 'Gradle', desc: 'Uso, tips y ejemplos multi-módulo' },
+          { href: '/actions', title: 'Actions', desc: 'Nuestras GitHub Actions' },
+          { href: '/gradle', title: 'Gradle', desc: 'Cómo lo usamos, con ejemplos' },
           { href: '/reference/rulesets', title: 'Referencia', desc: 'Rulesets y CODEOWNERS' },
         ].map((c) => (
           <a href={c.href}

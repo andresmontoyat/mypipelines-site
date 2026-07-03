@@ -39,7 +39,7 @@ const lang = defaultLocale;
           <a href={KRAKEND_REPO} target="_blank" rel="noopener"
              class="text-sm text-brand-600 dark:text-brand-400 hover:underline">Codehunters-IO/krakend-gateway ↗</a>
         </div>
-        <p class="mt-2 text-[var(--fg-muted)]">Plugins Go propios que corren en el gateway KrakenD (AuthN, tracing, i18n, geo-IP).</p>
+        <p class="mt-2 text-[var(--fg-muted)]">Plugins en Go que escribimos para el gateway: auth en el borde, tracing, idioma y geo-IP.</p>
         <div class="mt-4 grid grid-cols-1 md:grid-cols-2 gap-4">
           {KRAKEND_PLUGINS.map((p) => (
             <a href={`${KRAKEND_REPO}/tree/main/plugins/${p.name}`} target="_blank" rel="noopener"

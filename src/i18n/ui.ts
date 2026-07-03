@@ -5,7 +5,7 @@ export type Locale = string;
 const strings = {
   // Site identity
   'site.title': 'mypipelines',
-  'site.tagline': 'Pipelines CI/CD listos para copiar',
+  'site.tagline': 'Los pipelines que usamos, para que no los armes de cero',
   'home.title': 'mypipelines',
 
   // Navigation
@@ -18,21 +18,21 @@ const strings = {
 
   // Actions
   'actions.title': 'GitHub Actions',
-  'actions.subtitle': 'Actions propias mantenidas por Codehunters',
+  'actions.subtitle': 'Actions que mantenemos y usamos a diario',
 
   // Gradle
-  'gradle.title': 'Gradle: uso y tips',
-  'gradle.subtitle': 'Cómo usamos Gradle Kotlin DSL en proyectos multi-módulo — convención, quality gates, packages y diagramas',
+  'gradle.title': 'Gradle en la práctica',
+  'gradle.subtitle': 'Cómo montamos Gradle Kotlin DSL en proyectos multi-módulo, sin magia',
 
   // Catalog
   'catalog.title': 'Catálogo de pipelines',
-  'catalog.subtitle': 'Workflows reutilizables y templates por stack',
+  'catalog.subtitle': 'Un workflow por stack, con sus templates',
 
   // Footer
-  'footer.tagline': 'Pipelines CI/CD listos para copiar en tu proyecto.',
+  'footer.tagline': 'Los pipelines que usamos en Codehunters, listos para copiar.',
   'footer.guides': 'Guías',
   'footer.repo': 'Repositorio',
-  'footer.builtWith': 'Hecho con Astro · contenido desde ci-templates',
+  'footer.builtWith': 'Hecho con Astro · contenido real, no de ejemplo',
   'footer.source': 'Contenido generado desde el repositorio ci-templates',
 
   // Breadcrumb
