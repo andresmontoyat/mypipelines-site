@@ -9,6 +9,9 @@ const all = await getCollection('pipelines');
 const counts = Object.fromEntries(
   STACK_ORDER.map((s) => [s, all.filter((e) => e.data.stack === s).length])
 );
+const guides = (await getCollection('guides')).sort(
+  (a, b) => a.data.order - b.data.order || a.data.slug.localeCompare(b.data.slug)
+);
 ---
 
 <BaseLayout title={t(lang, 'site.title')} lang={lang}>
@@ -39,12 +42,24 @@ const counts = Object.fromEntries(
     </section>
 
     <section class="mt-16">
+      <h2 class="text-sm font-semibold uppercase tracking-wide text-[var(--fg-subtle)]">Guías</h2>
+      <div class="mt-4 grid grid-cols-1 md:grid-cols-3 gap-4">
+        {guides.map((g) => (
+          <a href={`/guides/${g.data.slug}`}
+             class="rounded-lg border border-[var(--border-subtle)] surface p-5 hover:border-brand-500 transition-colors">
+            <h3 class="font-semibold text-[var(--fg)]">{g.data.title}</h3>
+            <p class="mt-1 text-sm text-[var(--fg-muted)] line-clamp-2">{g.data.description}</p>
+          </a>
+        ))}
+      </div>
+    </section>
+
+    <section class="mt-12">
       <h2 class="text-sm font-semibold uppercase tracking-wide text-[var(--fg-subtle)]">Explorá también</h2>
-      <div class="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-4">
+      <div class="mt-4 grid grid-cols-1 sm:grid-cols-3 gap-4">
         {[
           { href: '/actions', title: 'Actions', desc: 'GitHub Actions propias de Codehunters' },
           { href: '/gradle', title: 'Gradle', desc: 'Uso, tips y ejemplos multi-módulo' },
-          { href: '/guides/quick-start', title: 'Guías', desc: 'GitFlow, adopción y deploy targets' },
           { href: '/reference/rulesets', title: 'Referencia', desc: 'Rulesets y CODEOWNERS' },
         ].map((c) => (
           <a href={c.href}
