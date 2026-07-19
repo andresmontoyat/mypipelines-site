@@ -5,10 +5,15 @@ organizado por stack. Sitio estático construido con Astro y desplegado en Verce
 
 ## Qué contiene
 
-- **Pipelines** por stack: Java (Spring Boot), KrakenD, React, NGINX,
-  Contracts (Hardhat/Solidity) y Shared (cross-cutting).
-- **Guías**: quick start, GitFlow, deploy targets.
-- **Referencia**: rulesets, CODEOWNERS.
+- **Pipelines** por stack: Java (Spring Boot), KrakenD (incluye plugins Go),
+  React, NGINX, Contracts (Hardhat/Solidity) y Shared (cross-cutting).
+- **Actions**: GitHub Actions propias de Codehunters (p. ej. Delete Package
+  Versions).
+- **Gradle**: guías de uso (GitHub Packages, multi-project, quality gates,
+  testing y diagramas).
+- **Guías y Referencia**: quick start, GitFlow, deploy targets, rulesets y
+  CODEOWNERS — plegadas dentro del home de Pipelines y accesibles desde el
+  footer.
 - **Búsqueda** full-text del lado del cliente (Pagefind).
 
 El contenido de `src/content/pipelines/` se **genera** desde `../ci-templates`
