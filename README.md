@@ -1,66 +1,66 @@
 # mypipelines
 
-Catálogo navegable de los pipelines CI/CD de [`ci-templates`](../ci-templates),
-organizado por stack. Sitio estático construido con Astro y desplegado en Vercel.
+Browsable catalog of the CI/CD pipelines from [`ci-templates`](../ci-templates),
+organized by stack. Static site built with Astro, deployed on Vercel.
 
-## Qué contiene
+## What's inside
 
-- **Pipelines** por stack: Java (Spring Boot), KrakenD (incluye plugins Go),
-  React, NGINX, Contracts (Hardhat/Solidity) y Shared (cross-cutting).
-- **Actions**: GitHub Actions propias de Codehunters (p. ej. Delete Package
+- **Pipelines** by stack: Java (Spring Boot), KrakenD (including Go plugins),
+  React, NGINX, Contracts (Hardhat/Solidity) and Shared (cross-cutting).
+- **Actions**: Codehunters' own GitHub Actions (e.g. Delete Package
   Versions).
-- **Gradle**: guías de uso (GitHub Packages, multi-project, quality gates,
-  testing y diagramas).
-- **Guías y Referencia**: quick start, GitFlow, deploy targets, rulesets y
-  CODEOWNERS — plegadas dentro del home de Pipelines y accesibles desde el
+- **Gradle**: usage guides (GitHub Packages, multi-project, quality gates,
+  testing and diagrams).
+- **Guides & Reference**: quick start, GitFlow, deploy targets, rulesets and
+  CODEOWNERS — folded into the Pipelines home and reachable from the
   footer.
-- **Búsqueda** full-text del lado del cliente (Pagefind).
+- **Search**: client-side full-text search (Pagefind).
 
-El contenido de `src/content/pipelines/` se **genera** desde `../ci-templates`
-vía `scripts/sync-pipelines.mjs`. No se edita a mano.
+The content under `src/content/pipelines/` is **generated** from
+`../ci-templates` via `scripts/sync-pipelines.mjs`. It's not edited by hand.
 
-## Desarrollo
+## Development
 
 ```bash
 pnpm install
-pnpm sync      # regenera src/content/pipelines/ desde ../ci-templates
-pnpm dev       # servidor local con hot reload
+pnpm sync      # regenerate src/content/pipelines/ from ../ci-templates
+pnpm dev       # local dev server with hot reload
 ```
 
-Otros comandos:
+Other commands:
 
 ```bash
-pnpm build     # sync + astro build (salida en dist/)
-pnpm preview   # sirve el build de producción
-pnpm check     # astro check (type-check de .astro)
-pnpm test      # node --test (tests en tests/)
+pnpm build     # sync + astro build (output in dist/)
+pnpm preview   # serve the production build
+pnpm check     # astro check (type-checks .astro files)
+pnpm test      # node --test (tests in tests/)
 ```
 
-`pnpm build` corre el sync y luego `astro build`. El contenido generado se
-commitea porque Vercel no ve `../ci-templates`. Re-corré `pnpm sync` cuando
-cambie `ci-templates`.
+`pnpm build` runs the sync step and then `astro build`. The generated
+content is committed because Vercel doesn't see `../ci-templates`. Re-run
+`pnpm sync` whenever `ci-templates` changes.
 
-## Stack técnico
+## Tech stack
 
-- [Astro](https://astro.build) 6 — output estático
+- [Astro](https://astro.build) 7 — static output
 - Tailwind CSS 4
-- MDX para el contenido
-- Expressive Code — resaltado de sintaxis (temas Dracula / GitHub Light)
-- Pagefind — búsqueda estática
+- MDX for content
+- Expressive Code — syntax highlighting (Dracula theme, dark-only)
+- Pagefind — static search
 - pnpm workspace · Node ≥ 20
 
-## Estructura
+## Structure
 
 ```
-scripts/sync-pipelines.mjs   # genera content/pipelines desde ../ci-templates
+scripts/sync-pipelines.mjs   # generates content/pipelines from ../ci-templates
 src/
-  content/                   # pipelines (generado), gradle, guides, actions
-  lib/stacks.ts              # orden y etiquetas de stacks/kinds/types
-  pages/                     # rutas: stacks, pipelines, guides, reference, search
+  content/                   # pipelines (generated), gradle, guides, actions
+  lib/stacks.ts              # order and labels for stacks/kinds/types
+  pages/                     # routes: stacks, pipelines, guides, reference, search
   components/ · layouts/     # UI
 ```
 
 ## Deploy
 
-Push a la rama por defecto → Vercel corre `pnpm build` (`vercel.json`).
-Sitio en https://mypipelines.vercel.app
+Push to the default branch → Vercel runs `pnpm build` (`vercel.json`).
+Site at https://mypipelines.vercel.app
