@@ -9,7 +9,7 @@ interface Props {
 }
 const { category, title, lang } = Astro.props;
 
-const SEP = '›'; // U+203A SINGLE RIGHT-POINTING ANGLE QUOTATION MARK (D2-06)
+const SEP = '>';
 const homeHref = '/';
 ---
 
@@ -20,13 +20,13 @@ const homeHref = '/';
 >
   <ol class="flex flex-wrap items-center gap-1.5">
     <li><a href={homeHref} class="transition-colors hover:text-[var(--fg)]">{t(lang, 'breadcrumb.home')}</a></li>
-    <li aria-hidden="true" class="text-[var(--fg-subtle)]">{SEP}</li>
+    <li aria-hidden="true" class="text-[var(--fg-muted)]">{SEP}</li>
     <li>
       <a href={`/stacks/${category}`} class="transition-colors hover:text-[var(--fg)]">
         {STACK_LABELS[category]}
       </a>
     </li>
-    <li aria-hidden="true" class="text-[var(--fg-subtle)]">{SEP}</li>
+    <li aria-hidden="true" class="text-[var(--fg-muted)]">{SEP}</li>
     <li aria-current="page" class="font-medium text-[var(--fg)]">{title}</li>
   </ol>
 </nav>
