@@ -10,13 +10,7 @@ export default defineConfig({
   site: 'https://mypipelines.vercel.app',
   integrations: [
     expressiveCode({
-      themes: ['dracula', 'github-light'],
-      useDarkModeMediaQuery: false,
-      themeCssSelector: (theme) => {
-        if (theme.name === 'dracula') return 'html.dark';
-        if (theme.name === 'github-light') return 'html:not(.dark)';
-        return false;
-      },
+      themes: ['dracula'],
       plugins: [pluginLineNumbers()],
       defaultProps: {
         showLineNumbers: false,
