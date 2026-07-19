@@ -4,58 +4,38 @@
 @import "@fontsource-variable/ibm-plex-sans";
 @import "@fontsource-variable/jetbrains-mono";
 
-/* Tailwind v4 class-based dark mode (overrides default prefers-color-scheme) */
-@custom-variant dark (&:where(.dark, .dark *));
-
-/* Typography plugin for markdown content (prose / prose-invert) */
+/* Typography plugin for markdown content (prose) */
 @plugin "@tailwindcss/typography";
 
 /* ── Design tokens ───────────────────────────────────────────────────────── */
 @theme {
-  /* Typefaces — Plex Sans body, JetBrains Mono code/labels/wordmark */
+  /* Typefaces — JetBrains Mono for chrome/headings/labels/code/buttons, IBM Plex Sans for body copy */
   --font-sans: "IBM Plex Sans Variable", ui-sans-serif, system-ui, sans-serif;
   --font-mono: "JetBrains Mono Variable", ui-monospace, "SF Mono", Menlo, monospace;
-
-  /* Brand (stripe-vibe violet) — promoted from inline literals */
-  --color-brand-50: oklch(0.97 0.014 295);
-  --color-brand-400: oklch(0.71 0.16 293);
-  --color-brand-500: oklch(0.61 0.21 293);
-  --color-brand-600: oklch(0.54 0.24 293);
-  --color-brand-glow: oklch(0.61 0.21 293 / 35%);
 
   /* Fluid type scale (clamp: mobile → desktop) */
   --text-fluid-h1: clamp(2.25rem, 1.6rem + 3.2vw, 3.5rem);
   --text-fluid-h2: clamp(1.5rem, 1.2rem + 1.5vw, 2rem);
   --text-fluid-lead: clamp(1.05rem, 0.98rem + 0.4vw, 1.25rem);
 
-  /* Elevation scale (consistent shadows: card / sticky / overlay) */
-  --shadow-card: 0 1px 2px rgba(15, 23, 42, 0.04), 0 1px 3px rgba(15, 23, 42, 0.06);
-  --shadow-raised: 0 4px 12px -2px rgba(15, 23, 42, 0.10), 0 2px 6px -2px rgba(15, 23, 42, 0.06);
-
   /* Motion (subtle micro-interactions only — no entrance/decorative animation) */
   --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
   --duration-fast: 150ms;
   --duration-base: 250ms;
+
+  /* Terminal accent */
+  --color-glow: rgba(51, 255, 0, 0.35);
+  --color-accent-error: #ff3333;
 }
 
-/* ── Surface + foreground tiers (semantic, light/dark) ───────────────────── */
+/* ── Surface + foreground tokens (single tier — dark-only terminal theme) ── */
 :root {
-  --surface: #ffffff;
-  --surface-raised: #ffffff;
-  --surface-sunken: #f8f7fc;        /* violet-tinted slate-50 */
-  --border-subtle: #e2e8f0;         /* slate-200 */
-  --fg: #0f172a;                    /* slate-900 */
-  --fg-muted: #475569;              /* slate-600 */
-  --fg-subtle: #94a3b8;             /* slate-400 */
-}
-.dark {
-  --surface: #0b0f1a;              /* near-black, violet-tinted */
-  --surface-raised: #171227;       /* card/header — indigo-violet tint */
-  --surface-sunken: #05060c;       /* deepest well */
-  --border-subtle: rgba(255, 255, 255, 0.08);  /* translucent, was solid slate-700 */
-  --fg: #f4f2fb;                   /* slight violet-white */
-  --fg-muted: #b8b3c9;
-  --fg-subtle: #8b869c;
+  --surface: #050505;
+  --surface-raised: #0d1a0d;
+  --surface-sunken: #000000;
+  --border-subtle: #1a3d1a;
+  --fg: #33ff00;
+  --fg-muted: rgba(51, 255, 0, 0.55);
 }
 
 /* ── Base layer ──────────────────────────────────────────────────────────── */
@@ -64,8 +44,12 @@
     scroll-behavior: smooth;
   }
   @media (prefers-reduced-motion: reduce) {
-    html { scroll-behavior: auto; }
-    *, *::before, *::after {
+    html {
+      scroll-behavior: auto;
+    }
+    *,
+    *::before,
+    *::after {
       transition-duration: 0.01ms !important;
       animation-duration: 0.01ms !important;
       animation-iteration-count: 1 !important;
@@ -77,19 +61,43 @@
     color: var(--fg);
     -webkit-font-smoothing: antialiased;
     text-rendering: optimizeLegibility;
+    position: relative;
+  }
+  /* Global scanline overlay — single instance, whole site, subtle */
+  body::before {
+    content: "";
+    position: fixed;
+    inset: 0;
+    z-index: 1;
+    pointer-events: none;
+    opacity: 0.06;
+    background: repeating-linear-gradient(
+      0deg,
+      rgba(0, 0, 0, 0.6) 0px,
+      rgba(0, 0, 0, 0.6) 1px,
+      transparent 1px,
+      transparent 2px
+    );
+  }
+  /* Terminal look: zero border-radius everywhere, no exceptions */
+  * {
+    border-radius: 0 !important;
   }
   /* Tabular figures for code/labels alignment */
-  code, kbd, pre, samp {
+  code,
+  kbd,
+  pre,
+  samp {
     font-family: var(--font-mono);
     font-feature-settings: "tnum" 1;
   }
   ::selection {
-    background-color: var(--color-brand-500);
-    color: #fff;
+    background-color: var(--fg);
+    color: var(--surface);
   }
 }
 
-/* ── Semantic surface utilities (used by redesigned components) ──────────── */
+/* ── Semantic surface utilities ──────────────────────────────────────────── */
 @utility surface {
   background-color: var(--surface);
 }
@@ -100,38 +108,168 @@
   background-color: var(--surface-sunken);
 }
 
+/* ── Terminal box (ASCII-art top border) — content boxes only ───────────── */
+.term-box {
+  position: relative;
+  border: 1px solid var(--border-subtle);
+  padding: 0.75rem 0.875rem;
+  transition:
+    box-shadow var(--duration-base) var(--ease-out),
+    border-color var(--duration-base) var(--ease-out);
+}
+.term-box::before {
+  content: "+----------------------------------+";
+  position: absolute;
+  top: -0.5625rem;
+  left: 0.5rem;
+  background: var(--surface);
+  padding: 0 2px;
+  font-family: var(--font-mono);
+  font-size: 0.625rem;
+  letter-spacing: -1px;
+  color: var(--border-subtle);
+  white-space: nowrap;
+  overflow: hidden;
+  max-width: calc(100% - 1rem);
+  pointer-events: none;
+}
+.term-box:hover,
+.term-box:focus-visible {
+  border-color: var(--fg);
+  box-shadow: 0 0 12px var(--color-glow);
+}
+
+/* ── Terminal card (plain bordered link, no ASCII art) — list/grid nav ──── */
+.term-card {
+  display: block;
+  border: 1px solid var(--border-subtle);
+  padding: 1rem;
+  transition:
+    box-shadow var(--duration-base) var(--ease-out),
+    border-color var(--duration-base) var(--ease-out);
+}
+.term-card:hover,
+.term-card:focus-visible {
+  border-color: var(--fg);
+  box-shadow: 0 0 12px var(--color-glow);
+}
+
+/* ── Terminal inline link ─────────────────────────────────────────────────── */
+.term-link {
+  color: var(--fg);
+  text-decoration: none;
+  border-bottom: 1px solid transparent;
+  transition:
+    border-color var(--duration-fast) var(--ease-out),
+    text-shadow var(--duration-fast) var(--ease-out);
+}
+.term-link:hover,
+.term-link:focus-visible {
+  border-bottom-color: var(--fg);
+  text-shadow: 0 0 8px var(--color-glow);
+}
+
+/* ── Terminal tag (bracket-style small label, decorative) ────────────────── */
+.term-tag {
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  color: var(--fg-muted);
+}
+.term-tag::before {
+  content: "[ ";
+}
+.term-tag::after {
+  content: " ]";
+}
+
+/* ── Terminal button (bracket-style action) ──────────────────────────────── */
+.term-btn {
+  display: inline-block;
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  background: transparent;
+  border: 1px solid var(--fg);
+  color: var(--fg);
+  padding: 0.375rem 0.625rem;
+  cursor: pointer;
+  transition: box-shadow var(--duration-fast) var(--ease-out);
+}
+.term-btn:hover,
+.term-btn:focus-visible {
+  box-shadow: 0 0 12px var(--color-glow);
+}
+.term-btn::before {
+  content: "[ ";
+}
+.term-btn::after {
+  content: " ]";
+}
+
+/* Explicit focus outline on every interactive terminal element (never rely on glow alone) */
+.term-card:focus-visible,
+.term-box:focus-visible,
+.term-btn:focus-visible,
+.term-link:focus-visible {
+  outline: 2px solid var(--fg);
+  outline-offset: 2px;
+}
+
+/* ── Blinking cursor (single use: home hero) ─────────────────────────────── */
+.cursor-blink {
+  display: inline-block;
+  width: 0.5em;
+  height: 1em;
+  background: var(--fg);
+  vertical-align: text-bottom;
+  margin-left: 0.15em;
+  animation: term-blink 1s steps(1) infinite;
+}
+@keyframes term-blink {
+  50% {
+    opacity: 0;
+  }
+}
+
+/* ── Prose (MDX content) — map typography-plugin tokens to terminal palette ─ */
+.prose {
+  --tw-prose-body: var(--fg-muted);
+  --tw-prose-headings: var(--fg);
+  --tw-prose-lead: var(--fg-muted);
+  --tw-prose-links: var(--fg);
+  --tw-prose-bold: var(--fg);
+  --tw-prose-counters: var(--border-subtle);
+  --tw-prose-bullets: var(--border-subtle);
+  --tw-prose-hr: var(--border-subtle);
+  --tw-prose-quotes: var(--fg-muted);
+  --tw-prose-quote-borders: var(--border-subtle);
+  --tw-prose-captions: var(--fg-muted);
+  --tw-prose-code: var(--fg);
+  --tw-prose-pre-code: var(--fg);
+  --tw-prose-pre-bg: transparent;
+  --tw-prose-th-borders: var(--border-subtle);
+  --tw-prose-td-borders: var(--border-subtle);
+}
+
 /* Catalog sidebar scroll-spy active state (JS toggles [data-active]) */
 .cat-link[data-active] {
-  color: var(--color-brand-600);
-  border-left-color: var(--color-brand-500);
+  color: var(--fg);
+  border-left-color: var(--fg);
   font-weight: 600;
-}
-.dark .cat-link[data-active] {
-  color: var(--color-brand-400);
 }
 
 /* ToC active heading (JS toggles [data-active]) */
 .toc-link[data-active] {
-  color: var(--color-brand-600);
+  color: var(--fg);
   font-weight: 600;
 }
-.dark .toc-link[data-active] {
-  color: var(--color-brand-400);
-}
 
-/* Pagefind search UI — map its CSS vars to site theme tokens so the widget
-   auto-flips with light/dark (default Pagefind colors are light-only and
-   become unreadable on the dark surface). */
+/* Pagefind search UI — map its CSS vars to the terminal theme */
 .pagefind-ui {
-  --pagefind-ui-primary: var(--color-brand-600);
+  --pagefind-ui-primary: var(--fg);
   --pagefind-ui-text: var(--fg);
   --pagefind-ui-background: var(--surface);
   --pagefind-ui-border: var(--border-subtle);
   --pagefind-ui-tag: var(--surface-sunken);
-}
-.dark .pagefind-ui {
-  --pagefind-ui-primary: var(--color-brand-400);
-  --pagefind-ui-background: var(--surface-raised);
 }
 
 /* ToC anchor visibility: offset for sticky header (h2 + h3 only) */
