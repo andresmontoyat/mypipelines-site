@@ -10,10 +10,10 @@ const rendered = await Promise.all(refs.map(async (e) => ({ d: e.data, Content: 
 ---
 <BaseLayout title="Rulesets & CODEOWNERS" lang={lang}>
   <main class="mx-auto max-w-4xl px-4 py-10" data-pagefind-body>
-    <h1 class="text-fluid-h1 font-bold text-[var(--fg)]">Rulesets & CODEOWNERS</h1>
+    <h1 class="text-fluid-h1 font-semibold tracking-[-0.02em] text-[var(--fg)]">Rulesets & CODEOWNERS</h1>
     {rendered.map(({ d, Content }) => (
       <section class="mt-8">
-        <h2 class="text-2xl font-bold text-[var(--fg)]">{d.title}</h2>
+        <h2 class="text-2xl font-semibold tracking-[-0.02em] text-[var(--fg)]">{d.title}</h2>
         <p class="text-sm text-[var(--fg-muted)]">{d.description}</p>
         <article class="prose prose-slate dark:prose-invert max-w-none mt-2"><Content /></article>
       </section>

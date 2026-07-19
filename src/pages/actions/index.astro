@@ -11,7 +11,7 @@ const entries = (await getCollection('actions')).sort(
 <BaseLayout title={t(lang, 'nav.actions')} lang={lang}>
   <main class="mx-auto max-w-4xl px-4 py-10">
     <header class="mb-8 border-b border-[var(--border-subtle)] pb-6">
-      <h1 class="text-fluid-h1 font-bold tracking-tight text-[var(--fg)]">{t(lang, 'actions.title')}</h1>
+      <h1 class="text-fluid-h1 font-semibold tracking-[-0.02em] text-[var(--fg)]">{t(lang, 'actions.title')}</h1>
       <p class="mt-2 text-[var(--fg-muted)]">{t(lang, 'actions.subtitle')}</p>
     </header>
     <div class="grid grid-cols-1 md:grid-cols-2 gap-4">

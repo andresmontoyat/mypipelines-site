@@ -27,7 +27,7 @@ const lang = defaultLocale;
         <span>{KIND_LABELS[d.kind]}</span>
         {d.triggers.length > 0 && (<><span>·</span><span>on: {d.triggers.join(', ')}</span></>)}
       </div>
-      <h1 class="mt-2 text-3xl font-bold tracking-tight text-[var(--fg)]">{d.title}</h1>
+      <h1 class="mt-2 text-3xl font-semibold tracking-[-0.02em] text-[var(--fg)]">{d.title}</h1>
       <p class="mt-2 text-[var(--fg-muted)]">{d.description}</p>
       <p class="mt-1 text-xs font-mono text-[var(--fg-muted)]">{d.sourcePath}</p>
     </header>
