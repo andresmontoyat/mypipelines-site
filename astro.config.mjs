@@ -4,10 +4,11 @@ import tailwindcss from '@tailwindcss/vite';
 import expressiveCode from 'astro-expressive-code';
 import { pluginLineNumbers } from '@expressive-code/plugin-line-numbers';
 import pagefind from 'astro-pagefind';
+import sitemap from '@astrojs/sitemap';
 
 export default defineConfig({
   output: 'static',
-  site: 'https://mypipelines.vercel.app',
+  site: 'https://mypipelines.andresmontoyat.co',
   integrations: [
     expressiveCode({
       themes: ['dracula'],
@@ -19,6 +20,7 @@ export default defineConfig({
     }),
     mdx(),
     pagefind(),
+    sitemap(),
   ],
   vite: { plugins: [tailwindcss()] },
 });

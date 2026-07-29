@@ -10,6 +10,8 @@ interface Props {
 }
 
 const { title, lang = 'es' } = Astro.props;
+
+const canonical = new URL(Astro.url.pathname, Astro.site).href;
 ---
 
 <!DOCTYPE html>
@@ -20,6 +22,8 @@ const { title, lang = 'es' } = Astro.props;
 
     <title>{title}</title>
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="canonical" href={canonical} />
+    <link rel="sitemap" href="/sitemap-index.xml" />
     <slot name="head" />
   </head>
   <body class="flex min-h-dvh flex-col">
