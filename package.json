@@ -18,6 +18,7 @@
   },
   "dependencies": {
     "@astrojs/mdx": "7.0.3",
+    "@astrojs/sitemap": "^3.7.3",
     "@expressive-code/plugin-line-numbers": "0.43.1",
     "@fontsource-variable/ibm-plex-sans": "^5.2.8",
     "@fontsource-variable/jetbrains-mono": "^5.2.8",
