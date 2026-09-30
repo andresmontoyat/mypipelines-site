@@ -21,19 +21,51 @@ on:
         type: string
         default: 'ubuntu-latest'
 
+# Least privilege for what this workflow actually does. Without it the
+# job inherits whatever the calling repository's default happens to be,
+# which on older repositories is write-all.
+permissions:
+  contents: read
+
 jobs:
   commitlint:
     name: Lint Commit Messages
     runs-on: ${{ inputs.runner }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v5
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
           fetch-depth: 0
 
       - name: Install commitlint
         run: |
           npm install --save-dev @commitlint/config-conventional @commitlint/cli
+
+      # commitlint resolves its rules from the *consumer* repository. With no
+      # config there it loads an empty rule set and exits 9 (`[empty-rules]`)
+      # before reading a single commit, so the gate fails for reasons that have
+      # nothing to do with the commits. Supply the conventional preset in that
+      # case; a repo that ships its own config is left untouched.
+      - name: Provide a default config when the repository has none
+        run: |
+          for f in commitlint.config.js commitlint.config.cjs commitlint.config.mjs \
+                   commitlint.config.ts commitlint.config.json commitlint.config.yaml \
+                   commitlint.config.yml .commitlintrc .commitlintrc.js .commitlintrc.cjs \
+                   .commitlintrc.mjs .commitlintrc.ts .commitlintrc.json .commitlintrc.yaml \
+                   .commitlintrc.yml; do
+            if [ -f "$f" ]; then
+              echo "Using the repository's own config: $f"
+              exit 0
+            fi
+          done
+
+          if [ -f package.json ] && grep -q '"commitlint"' package.json; then
+            echo "Using the commitlint key in package.json"
+            exit 0
+          fi
+
+          echo "No commitlint config found; falling back to @commitlint/config-conventional"
+          echo "module.exports = { extends: ['@commitlint/config-conventional'] };" > commitlint.config.js
 
       - name: Validate PR commits
         if: github.event_name == 'pull_request'

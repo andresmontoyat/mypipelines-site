@@ -44,6 +44,12 @@ on:
         description: 'Number of secrets found'
         value: ${{ jobs.trufflehog.outputs.findings }}
 
+# Least privilege for what this workflow actually does. Without it the
+# job inherits whatever the calling repository's default happens to be,
+# which on older repositories is write-all.
+permissions:
+  contents: read
+
 jobs:
   trufflehog:
     name: TruffleHog Secret Scan
@@ -56,7 +62,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v5
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
           fetch-depth: 0
 
@@ -66,7 +72,7 @@ jobs:
       - name: TruffleHog Scan
         id: scan
         # Pinned to v3.95.3 SHA — trufflehog has no floating @v3 tag, only semver tags.
-        uses: trufflesecurity/trufflehog@37b77001d0174ebec2fcca2bd83ff83a6d45a3ab  # v3.95.3
+        uses: trufflesecurity/trufflehog@f714bf454f350590f4a24c3ddb1aef02c35bf5b6  # v3.97.5
         continue-on-error: ${{ !inputs.fail_on_findings }}
         with:
           extra_args: >-
