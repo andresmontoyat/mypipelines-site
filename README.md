@@ -1,6 +1,6 @@
 # mypipelines
 
-Browsable catalog of the CI/CD pipelines from [`ci-templates`](../ci-templates),
+Browsable catalog of the CI/CD pipelines from [`ci-templates`](../../devops/ci-templates),
 organized by stack. Static site built with Astro, deployed on Vercel.
 
 ## What's inside
@@ -11,19 +11,21 @@ organized by stack. Static site built with Astro, deployed on Vercel.
   Versions).
 - **Gradle**: usage guides (GitHub Packages, multi-project, quality gates,
   testing and diagrams).
-- **Guides & Reference**: quick start, GitFlow, deploy targets, rulesets and
-  CODEOWNERS — folded into the Pipelines home and reachable from the
+- **Guides & Reference**: quick start, GitFlow, deploy targets, base images,
+  rulesets and CODEOWNERS — folded into the Pipelines home and reachable from the
   footer.
 - **Search**: client-side full-text search (Pagefind).
 
 The content under `src/content/pipelines/` is **generated** from
-`../ci-templates` via `scripts/sync-pipelines.mjs`. It's not edited by hand.
+`../../devops/ci-templates` via `scripts/sync-pipelines.mjs`. It's not edited by hand.
+Pages whose source file was renamed or deleted upstream are removed on sync.
+Point `CI_TEMPLATES_DIR` at another checkout to sync from elsewhere.
 
 ## Development
 
 ```bash
 pnpm install
-pnpm sync      # regenerate src/content/pipelines/ from ../ci-templates
+pnpm sync      # regenerate src/content/pipelines/; fails if ci-templates is missing
 pnpm dev       # local dev server with hot reload
 ```
 
@@ -36,9 +38,10 @@ pnpm check     # astro check (type-checks .astro files)
 pnpm test      # node --test (tests in tests/)
 ```
 
-`pnpm build` runs the sync step and then `astro build`. The generated
-content is committed because Vercel doesn't see `../ci-templates`. Re-run
-`pnpm sync` whenever `ci-templates` changes.
+`pnpm build` runs the sync step and then `astro build`. When ci-templates is
+not there (Vercel) the build skips the sync and publishes the committed pages,
+so a wrong path goes unnoticed: that is why `pnpm sync` is strict. Re-run it
+whenever `ci-templates` changes and commit the result.
 
 ## Tech stack
 
@@ -52,7 +55,7 @@ content is committed because Vercel doesn't see `../ci-templates`. Re-run
 ## Structure
 
 ```
-scripts/sync-pipelines.mjs   # generates content/pipelines from ../ci-templates
+scripts/sync-pipelines.mjs   # generates content/pipelines from ci-templates
 src/
   content/                   # pipelines (generated), gradle, guides, actions
   lib/stacks.ts              # order and labels for stacks/kinds/types

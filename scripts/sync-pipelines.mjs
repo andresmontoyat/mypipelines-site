@@ -29,6 +29,7 @@ export function deriveKind(relPath) {
 const TYPE_KEYWORDS = [
   ['artifact', 'artifact'], ['owasp', 'security'], ['trufflehog', 'security'],
   ['qodana', 'security'], ['dependency-review', 'security'], ['security', 'security'],
+  ['scan', 'security'],
   ['deploy', 'deploy'], ['notif', 'notify'], ['slack', 'notify'],
   ['pipeline', 'pipeline'], ['release', 'release'], ['tag', 'release'],
   ['semver', 'release'], ['commit-lint', 'lint'], ['validate-source', 'lint'],
@@ -72,11 +73,18 @@ export function extractTriggers(raw) {
   return triggers;
 }
 
-import { existsSync, mkdirSync, readFileSync, writeFileSync, readdirSync } from 'node:fs';
-import { join } from 'node:path';
+import { existsSync, mkdirSync, readFileSync, writeFileSync, readdirSync, rmSync } from 'node:fs';
+import { join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
 const SUBTREES = ['.github/workflows', 'templates', '.github/ruleset'];
+const SOURCE_EXTENSIONS = ['.yml', '.yaml', '.json'];
+
+// The site lives in sites/, the templates repo in devops/ — siblings under the same org folder.
+export function resolveSourceDir(env, cwd) {
+  if (env.CI_TEMPLATES_DIR) return resolve(cwd, env.CI_TEMPLATES_DIR);
+  return resolve(cwd, '..', '..', 'devops', 'ci-templates');
+}
 
 function langFor(relPath) {
   if (relPath.endsWith('.json')) return 'json';
@@ -91,6 +99,7 @@ export function collectSources(rootDir) {
     if (!existsSync(dir)) continue;
     for (const f of readdirSync(dir)) {
       if (f.startsWith('.')) continue;
+      if (!SOURCE_EXTENSIONS.includes(extname(f))) continue;
       const relPath = `${sub}/${f}`;
       out.push({ relPath, lang: langFor(relPath) });
     }
@@ -135,14 +144,27 @@ export function generate(rootDir, destDir) {
     ].join('\n');
     writeFileSync(join(destDir, `${slug}.mdx`), fm, 'utf8');
   }
+  pruneStale(destDir, new Set(sources.map(({ relPath }) => `${toSlug(relPath)}.mdx`)));
   return sources.length;
 }
 
+// A page whose workflow was renamed or deleted upstream would otherwise keep being published.
+function pruneStale(destDir, keep) {
+  for (const f of readdirSync(destDir)) {
+    if (f.endsWith('.mdx') && !keep.has(f)) rmSync(join(destDir, f));
+  }
+}
+
 if (import.meta.url === pathToFileURL(process.argv[1] ?? '').href) {
-  const SOURCE_DIR = join(process.cwd(), '..', 'ci-templates');
+  const SOURCE_DIR = resolveSourceDir(process.env, process.cwd());
   const DEST_DIR = join(process.cwd(), 'src', 'content', 'pipelines');
   if (!existsSync(SOURCE_DIR)) {
     console.warn(`[sync-pipelines] Source dir not found: ${SOURCE_DIR}`);
+    if (process.argv.includes('--strict')) {
+      console.error('[sync-pipelines] --strict: set CI_TEMPLATES_DIR to the ci-templates checkout.');
+      process.exit(1);
+    }
+    // Hosted builds (Vercel) have no ci-templates checkout and publish the committed pages.
     console.warn('[sync-pipelines] Skipping sync — using committed files.');
     process.exit(0);
   }

@@ -94,3 +94,45 @@ test('generate writes one mdx per source with valid frontmatter', () => {
   assert.match(deploy, /triggers: \["push"\]/);
   rmSync(dest, { recursive: true, force: true });
 });
+
+import { resolveSourceDir } from '../scripts/sync-pipelines.mjs';
+import { mkdirSync, writeFileSync, existsSync } from 'node:fs';
+
+test('collectSources skips files that are not pipeline sources', () => {
+  const rels = collectSources('tests/fixtures/ci-templates').map((s) => s.relPath);
+  assert.ok(!rels.includes('.github/ruleset/README.md'));
+});
+
+test('generate removes pages whose source no longer exists', () => {
+  const dest = mkdtempSync(join(tmpdir(), 'mp-'));
+  writeFileSync(join(dest, 'java-release-deploy.mdx'), '---\n---\n', 'utf8');
+  generate('tests/fixtures/ci-templates', dest);
+  assert.equal(existsSync(join(dest, 'java-release-deploy.mdx')), false);
+  assert.equal(existsSync(join(dest, 'java-build.mdx')), true);
+  rmSync(dest, { recursive: true, force: true });
+});
+
+test('generate leaves non-mdx files in the destination alone', () => {
+  const dest = mkdtempSync(join(tmpdir(), 'mp-'));
+  mkdirSync(join(dest, 'nested'));
+  writeFileSync(join(dest, 'notes.txt'), 'keep', 'utf8');
+  generate('tests/fixtures/ci-templates', dest);
+  assert.equal(existsSync(join(dest, 'notes.txt')), true);
+  assert.equal(existsSync(join(dest, 'nested')), true);
+  rmSync(dest, { recursive: true, force: true });
+});
+
+test('resolveSourceDir defaults to the devops/ci-templates sibling of sites/', () => {
+  const cwd = '/repos/codehunters/sites/mypipelines';
+  assert.equal(resolveSourceDir({}, cwd), '/repos/codehunters/devops/ci-templates');
+});
+
+test('resolveSourceDir honours CI_TEMPLATES_DIR relative to cwd', () => {
+  const cwd = '/repos/codehunters/sites/mypipelines';
+  assert.equal(resolveSourceDir({ CI_TEMPLATES_DIR: '../ci-templates' }, cwd), '/repos/codehunters/sites/ci-templates');
+  assert.equal(resolveSourceDir({ CI_TEMPLATES_DIR: '/abs/ci-templates' }, cwd), '/abs/ci-templates');
+});
+
+test('deriveType classifies image scanning as security', () => {
+  assert.equal(deriveType('shared-scan-published-images.yml'), 'security');
+});
