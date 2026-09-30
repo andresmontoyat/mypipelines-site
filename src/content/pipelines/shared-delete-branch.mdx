@@ -26,7 +26,7 @@ on:
         type: boolean
         default: false
       fail_on_protected:
-        description: 'Hard-fail when target branch is protected (develop/main/master/release/*). Default true for explicit branch_name inputs.'
+        description: 'Hard-fail when target branch is protected (develop/main). Default true for explicit branch_name inputs.'
         required: false
         type: boolean
         default: true
@@ -36,13 +36,22 @@ on:
         description: 'Name of deleted branch (empty if not deleted)'
         value: ${{ jobs.delete.outputs.branch }}
       status:
-        description: 'Status: deleted, skipped, protected, not_found'
+        description: 'Status: deleted, skipped, protected, not_found, unmerged'
         value: ${{ jobs.delete.outputs.status }}
+
+# Least privilege for what this workflow actually does. Without it the
+# job inherits whatever the calling repository's default happens to be,
+# which on older repositories is write-all.
+permissions:
+  contents: write
 
 jobs:
   delete:
     name: Delete Branch
     runs-on: ubuntu-latest
+    # A cleanup hiccup must never fail the calling pipeline (valid here: this is a normal job,
+    # unlike the reusable-workflow caller).
+    continue-on-error: true
 
     outputs:
       branch: ${{ steps.delete.outputs.branch }}
@@ -50,7 +59,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v5
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
           fetch-depth: 0
 
@@ -62,8 +71,8 @@ jobs:
           DRY_RUN: ${{ inputs.dry_run }}
           FAIL_ON_PROTECTED: ${{ inputs.fail_on_protected }}
         run: |
-          # Protected branches - never delete
-          PROTECTED_BRANCHES="main master develop"
+          # Protected branches - never delete. Only develop and main are protected.
+          PROTECTED_BRANCHES="main develop"
 
           # Determine branch to delete
           EXPLICIT_INPUT=false
@@ -98,7 +107,8 @@ jobs:
 
           echo "Detected branch: $BRANCH"
 
-          # Check if branch is protected
+          # Check if branch is protected. NOTE: release/* is intentionally NOT protected —
+          # a release/vX.Y.Z branch is transient and must be deleted once merged to main.
           IS_PROTECTED=false
           for protected in $PROTECTED_BRANCHES; do
             if [ "$BRANCH" = "$protected" ]; then
@@ -106,12 +116,9 @@ jobs:
               break
             fi
           done
-          if echo "$BRANCH" | grep -q "^release/"; then
-            IS_PROTECTED=true
-          fi
 
           if [ "$IS_PROTECTED" = "true" ]; then
-            echo "::warning::Branch '$BRANCH' is protected (main/master/develop/release/*) — refusing to delete."
+            echo "::warning::Branch '$BRANCH' is protected (develop/main) — refusing to delete."
             echo "status=protected" >> $GITHUB_OUTPUT
             echo "branch=$BRANCH" >> $GITHUB_OUTPUT
             if [ "$EXPLICIT_INPUT" = "true" ] && [ "$FAIL_ON_PROTECTED" = "true" ]; then
@@ -119,6 +126,21 @@ jobs:
               exit 1
             fi
             exit 0
+          fi
+
+          # Validate the branch was actually MERGED before deleting (auto-detected branches only).
+          # Uses the associated PR's merged_at, so it works for merge-commit AND squash merges.
+          # Never deletes unmerged work; if it can't verify a merged PR, it skips deletion.
+          if [ "$EXPLICIT_INPUT" = "false" ]; then
+            MERGED_AT=$(gh api "repos/${{ github.repository }}/commits/${COMMIT_SHA}/pulls" \
+              --jq "[.[] | select(.head.ref==\"${BRANCH}\" and .merged_at != null)] | .[0].merged_at // empty" 2>/dev/null || echo "")
+            if [ -z "$MERGED_AT" ]; then
+              echo "::warning::Branch '$BRANCH' is not a verified-merged PR head for ${COMMIT_SHA} — skipping delete."
+              echo "status=unmerged" >> $GITHUB_OUTPUT
+              echo "branch=$BRANCH" >> $GITHUB_OUTPUT
+              exit 0
+            fi
+            echo "Branch '$BRANCH' verified merged at ${MERGED_AT}."
           fi
 
           # Check if branch exists

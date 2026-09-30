@@ -1,0 +1,98 @@
+---
+title: "Krakend Tag Deploy"
+slug: "krakend-tag-deploy"
+stack: "krakend"
+kind: "caller"
+type: "deploy"
+triggers: ["workflow_dispatch"]
+description: "Template: Release KrakenD to PRODUCTION (manual, button-triggered) Copy to: .github/workflows/tag-deploy.yml Trigger: workflow_dispatch (Actions tab -> \"Run workflow\") with an explicit version. Flow: "
+sourcePath: "templates/krakend-tag-deploy.yml"
+---
+
+```yaml title="templates/krakend-tag-deploy.yml"
+# Template: Release KrakenD to PRODUCTION (manual, button-triggered)
+# Copy to: .github/workflows/tag-deploy.yml
+#
+# Trigger: workflow_dispatch (Actions tab -> "Run workflow") with an explicit version.
+# Flow: validate version -> deploy to PROD (Environment reviewers gate) -> tag vX.Y.Z + Release.
+# Single approval (the reusable deploy job binds environment: prod). Tag created only after
+# a successful approved deploy.
+#
+# NOTE: the tag is pushed by GITHUB_TOKEN — the tag-protection ruleset must list the GitHub
+# Actions app in bypass_actors, else tag creation is blocked once the ruleset is active.
+#
+# Required secrets: Same as develop-deploy.yml
+
+name: Release to Production
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Release version to cut and deploy (format vX.Y.Z, e.g. v1.4.0)'
+        required: true
+        type: string
+
+permissions:
+  contents: write
+  id-token: write
+
+jobs:
+  validate:
+    name: Validate version
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          fetch-depth: 0
+      - name: Check version format and uniqueness
+        env:
+          VERSION: ${{ inputs.version }}
+          REF: ${{ github.ref_name }}
+        run: |
+          if [ "$REF" != "main" ]; then
+            echo "::error::Release must be dispatched from 'main' (got '$REF')."; exit 1
+          fi
+          if [[ ! "$VERSION" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::version must match vX.Y.Z (got '$VERSION')"; exit 1
+          fi
+          if git rev-parse "refs/tags/${VERSION}" >/dev/null 2>&1; then
+            echo "::error::tag ${VERSION} already exists (releases are immutable)"; exit 1
+          fi
+
+  deploy:
+    name: Deploy to prod
+    needs: validate
+    uses: <org>/ci-templates/.github/workflows/krakend-main-pipeline.yml@v1
+    with:
+      run_build: true
+      run_test: false
+      run_artifact: true
+      image_tag: ${{ inputs.version }}
+      run_deploy: true
+      deploy_target: 'ec2-vpn'
+      environment: 'prod'
+    secrets: inherit
+
+  tag:
+    name: Tag + GitHub Release
+    needs: deploy
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          fetch-depth: 0
+      - name: Create tag and release
+        env:
+          VERSION: ${{ inputs.version }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if ! git rev-parse "refs/tags/${VERSION}" >/dev/null 2>&1; then
+            git tag "${VERSION}"
+            git push origin "${VERSION}"
+          fi
+          gh release view "${VERSION}" >/dev/null 2>&1 \
+            || gh release create "${VERSION}" --title "${VERSION}" --generate-notes
+```

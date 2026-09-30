@@ -95,21 +95,6 @@ on:
         required: false
         type: string
         default: 'bug,pipeline-failure'
-      run_notifications:
-        description: 'Send notifications after pipeline completes'
-        required: false
-        type: boolean
-        default: false
-      notify_providers:
-        description: 'Notification providers (comma-separated: slack, teams)'
-        required: false
-        type: string
-        default: 'slack'
-      notify_mention_on_failure:
-        description: 'Mention on failure (Slack: @channel, Teams: @General)'
-        required: false
-        type: string
-        default: ''
       run_cleanup:
         description: 'Delete merged branch after deploy'
         required: false
@@ -172,6 +157,11 @@ on:
         type: string
         default: |
           - ./certs:/etc/nginx/certs:ro
+      inject_aws_credentials:
+        description: 'DEPRECATED. Forwarded to the deploy workflow: put the pipeline AWS credentials in the container environment. Off by default; see shared-deploy-ec2.yml. Removed in v2.'
+        required: false
+        type: boolean
+        default: false
 
       # EKS-specific options
       eks_cluster_name:
@@ -217,6 +207,14 @@ on:
         type: boolean
         default: false
 
+      aws_role_to_assume:
+        description: >-
+          IAM role ARN to assume via GitHub OIDC, threaded down to the AWS jobs
+          below. Empty keeps the static-key path.
+        required: false
+        type: string
+        default: ''
+
     outputs:
       image_tag:
         description: 'Docker image tag pushed'
@@ -239,6 +237,16 @@ on:
       release_changelog:
         description: 'Release changelog'
         value: ${{ jobs.release.outputs.changelog }}
+
+# Least privilege for what this workflow actually does. Without it the
+# job inherits whatever the calling repository's default happens to be,
+# which on older repositories is write-all.
+permissions:
+  contents: write
+  issues: write
+  # For the OIDC path in the AWS workflows below; a caller's grant is the
+  # ceiling for everything beneath it.
+  id-token: write
 
 jobs:
   # ============================================
@@ -315,6 +323,7 @@ jobs:
     needs: [build, test]
     uses: ./.github/workflows/shared-artifact-docker-ecr.yml
     with:
+      aws_role_to_assume: ${{ inputs.aws_role_to_assume }}
       runner: ${{ inputs.runner }}
       image_tag: ${{ inputs.image_tag }}
       docker_platform: ${{ inputs.docker_platform }}
@@ -345,6 +354,7 @@ jobs:
       internal_port: ${{ inputs.internal_port }}
       container_env_vars: ${{ inputs.container_env_vars }}
       extra_volumes: ${{ inputs.extra_volumes }}
+      inject_aws_credentials: ${{ inputs.inject_aws_credentials }}
     secrets: inherit
 
   # ============================================
@@ -369,6 +379,7 @@ jobs:
       internal_port: ${{ inputs.internal_port }}
       container_env_vars: ${{ inputs.container_env_vars }}
       extra_volumes: ${{ inputs.extra_volumes }}
+      inject_aws_credentials: ${{ inputs.inject_aws_credentials }}
     secrets: inherit
 
   # ============================================
@@ -384,6 +395,7 @@ jobs:
     needs: [artifact]
     uses: ./.github/workflows/shared-deploy-eks.yml
     with:
+      aws_role_to_assume: ${{ inputs.aws_role_to_assume }}
       runner: ${{ inputs.runner }}
       image_tag: ${{ needs.artifact.outputs.image_tag }}
       environment: ${{ inputs.environment }}
@@ -442,22 +454,16 @@ jobs:
     secrets: inherit
 
   # ============================================
-  # NOTIFY - Notifications (runs last, always)
+  # NOTIFY - Slack notification (final, auto-derived)
   # ============================================
   notify:
     name: Notify
-    if: |
-      inputs.run_notifications &&
-      always()
-    needs: [build, test, artifact, deploy-ec2, deploy-ec2-vpn, deploy-eks, cleanup, release, tag]
+    if: always()
+    needs: [commit-lint, security, dependency-review, build, test, artifact, deploy-ec2, deploy-ec2-vpn, deploy-eks, release, cleanup, tag]
     uses: ./.github/workflows/shared-notifications.yml
     with:
-      providers: ${{ inputs.notify_providers }}
-      status: ${{ (needs.build.result == 'failure' || needs.test.result == 'failure' || needs.artifact.result == 'failure' || needs.deploy-ec2.result == 'failure' || needs.deploy-ec2-vpn.result == 'failure' || needs.deploy-eks.result == 'failure') && 'failure' || (needs.build.result == 'cancelled') && 'cancelled' || 'success' }}
+      status: ${{ contains(needs.*.result, 'failure') && 'failure' || contains(needs.*.result, 'cancelled') && 'cancelled' || 'success' }}
       environment: ${{ inputs.environment }}
-      version: ${{ needs.release.outputs.version }}
-      changelog: ${{ needs.release.outputs.changelog }}
-      mention_on_failure: ${{ inputs.notify_mention_on_failure }}
     secrets: inherit
 
   # ============================================
