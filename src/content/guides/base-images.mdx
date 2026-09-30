@@ -1,0 +1,101 @@
+---
+title: "Imágenes base"
+slug: "base-images"
+order: 4
+description: "ci-base-images: variantes ci y runtime, esquema de tags y cómo correr los pipelines dentro de la imagen con container_image."
+---
+
+# Imágenes base
+
+`ghcr.io/codehunters-io/ci-base-images` publica imágenes multi-arch (`linux/amd64`, `linux/arm64`)
+que reemplazan las instalaciones por run (`setup-java`, `setup-node`, AWS CLI) por un `container:`.
+Todas las variantes salen del mismo commit y comparten semver: la variante se elige por sufijo, la
+versión por número.
+
+## Dos familias, reglas opuestas
+
+| | `ci` | `runtime` |
+|---|---|---|
+| Para | correr pasos del pipeline | ser la base de la imagen de la app |
+| Usuario | `root` | non-root, uid fijo |
+| Trae | toolchain, Docker CLI, AWS CLI, git | nada de eso |
+
+Una imagen `ci` **nunca** es base de runtime: el Docker CLI y el AWS CLI son herramientas que un
+atacante hereda junto con la app.
+
+## Variantes
+
+| Familia | Variante | Sufijo | Base | Para |
+|---------|----------|--------|------|------|
+| ci | JDK 21 | _(ninguno)_ | `eclipse-temurin:21-jdk-alpine` | build/test Java (default) |
+| ci | JDK 25 | `-jdk25` | `eclipse-temurin:25-jdk-alpine` | servicios en JDK 25 LTS |
+| ci | GraalVM | `-graalvm` | `native-image-community:21` | `nativeCompile` |
+| ci | GraalVM 25 | `-graalvm25` | `native-image-community:25` | `nativeCompile` en JDK 25 |
+| ci | KrakenD | `-krakend` | `alpine` + `krakend` + `golang` | gateway + plugins |
+| ci | Node | `-node` | `node:20-alpine` | Hardhat/Solidity + SDK TypeScript |
+| runtime | Java | `-java-runtime` | `eclipse-temurin:21-jre-alpine` | jars Spring Boot |
+| runtime | Java 25 | `-java25-runtime` | `eclipse-temurin:25-jre-alpine` | jars en JDK 25 |
+| runtime | Node | `-node-runtime` | `node:20-alpine` | servicios Node/NestJS |
+| runtime | Web | `-web-runtime` | `nginx:alpine`, puerto 8080 | builds estáticos React/Vite |
+| runtime | Native | `-native-runtime` | `distroless/base-debian12` | binarios GraalVM |
+
+Java 21 sigue siendo el default: los tags sin sufijo son JDK 21. Java 25 es opt-in por repo.
+
+## Tags
+
+| Tag | Cuándo | Uso |
+|-----|--------|-----|
+| `1.3.1`, `1.3.1-graalvm`… | tag `v*` | **pin en prod** |
+| `1.3`, `1` (+ sufijo) | tag `v*` | rolling tolerante |
+| `latest`, `graalvm`, `node`… | push a la rama default | desarrollo |
+| `sha-<short>` (+ sufijo) | cada build | debug reproducible |
+
+En release y prod, siempre un tag semver. Nunca uno rolling.
+
+## Correr el pipeline dentro de la imagen
+
+Los reusables `java-build`, `java-test`, `java-owasp`, `java-architecture`,
+`java-artifact-dependency-github`, sus pipelines (`java-main-pipeline`, `java-pr-pipeline`) y los
+de contracts aceptan `container_image`. Vacío (default) = runner normal con `setup-java` /
+`setup-node`.
+
+```yaml title=".github/workflows/develop-deploy.yml"
+jobs:
+  pipeline:
+    uses: <org>/ci-templates/.github/workflows/java-main-pipeline.yml@v1
+    with:
+      container_image: 'ghcr.io/codehunters-io/ci-base-images:1.3.1'
+    secrets: inherit
+```
+
+- Con `container_image`, `java_version` / `node_version` se ignoran: la versión la fija el tag.
+- Gradle sigue saliendo de `./gradlew`; la imagen ahorra la descarga del JDK, nada más.
+- Los jobs de Docker artifact y deploy siguen en el runner en todos los stacks.
+- slither (contracts) trae su propia imagen e ignora el input.
+
+## Imagen de aplicación
+
+Multi-stage: compilar en la `ci`, publicar en la `runtime`.
+
+```dockerfile title="Dockerfile"
+FROM ghcr.io/codehunters-io/ci-base-images:1.3.1 AS build
+WORKDIR /src
+COPY . .
+RUN ./gradlew bootJar --no-daemon
+
+FROM ghcr.io/codehunters-io/ci-base-images:1.3.1-java-runtime
+COPY --from=build /src/build/libs/*.jar /app/app.jar
+CMD ["java", "-jar", "/app/app.jar"]
+```
+
+## CI del propio repo de imágenes
+
+`ci-base-images` no define workflows propios: sus callers usan los reusables `shared-*` de
+ci-templates.
+
+| Caller | Reusable |
+|--------|----------|
+| `pr-validation.yml` | [`shared-validate-image-pr`](/pipelines/shared-validate-image-pr) |
+| `build-publish.yml` | [`shared-build-publish-image`](/pipelines/shared-build-publish-image) |
+| `security-scan.yml` | [`shared-scan-published-images`](/pipelines/shared-scan-published-images) |
+| `cleanup-packages.yml` | [`shared-cleanup-packages`](/pipelines/shared-cleanup-packages) |

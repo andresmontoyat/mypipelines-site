@@ -2,14 +2,46 @@
 title: "Modelo GitFlow"
 slug: "gitflow"
 order: 2
-description: "Cómo las etapas de GitFlow (feature, PR, develop, release, main) mapean a cada pipeline."
+description: "Cómo las etapas de GitFlow (feature, PR, develop, release, main, prod) mapean a cada pipeline y environment."
 ---
 
 # Modelo GitFlow
 
-| Etapa | Trigger | Pipeline | Hace |
+## Java y KrakenD
+
+`main` llega a `cert`. Producción es un paso aparte, manual y con aprobación.
+
+| Etapa | Trigger | Template | Hace |
 |-------|---------|----------|------|
-| feature/PR | push feature/*, PR→develop | `*-pr-pipeline` | build→test→coverage→security |
-| develop | push→develop | `*-main-pipeline` | build→artifact→deploy(dev)→release PR |
-| release | push release/* | `*-main-pipeline` | build→artifact→deploy(staging) |
-| main | push→main | `*-main-pipeline` | build→artifact→deploy(prod)→tag+release |
+| feature/PR | push `feature/**` `bugfix/**` `hotfix/**`, PR→develop | `validate.yml` (`*-pr-pipeline`) | build→test→coverage→security, sin deploy |
+| develop | push→develop | `develop-deploy.yml` (`*-main-pipeline`) | build→artifact→deploy(`develop`)→crea `release/vX.Y.Z` y abre PR→main |
+| release | PR `release/vX.Y.Z`→main | — | rama de estabilización, sin deploy |
+| main | push→main | `main-deploy.yml` (`*-main-pipeline`) | build→artifact→deploy(`cert`) |
+| prod | `workflow_dispatch` desde main, input `version: vX.Y.Z` | `tag-deploy.yml` | deploy(`prod`, aprobación del Environment)→tag `vX.Y.Z`+GitHub Release |
+
+El tag y la Release se crean **después** de un deploy aprobado y exitoso: no quedan tags huérfanos
+de releases rechazadas. El tag lo empuja `GITHUB_TOKEN`, así que el ruleset de tags tiene que tener a
+GitHub Actions como bypass actor.
+
+## React, NGINX y Contracts
+
+`release/*` despliega a `staging` y `main` va directo a producción.
+
+| Etapa | Trigger | Environment |
+|-------|---------|-------------|
+| develop | push→develop | `develop` (Contracts: solo compile + test) |
+| release | push `release/**` | `staging` |
+| main | push→main | `production` |
+
+## Environments por stack
+
+Los nombres **no** son iguales entre stacks. Declarar en el repo consumidor los que usa su stack
+(**Settings → Environments**); uno que falta no rompe: los secrets resuelven vacíos.
+
+| Stack | develop | release/* | main | Promoción manual |
+|-------|---------|-----------|------|------------------|
+| Java | `develop` | — | `cert` | `prod` |
+| KrakenD | `develop` | — | `cert` | `prod` |
+| React | `develop` | `staging` | `production` | — |
+| NGINX | `develop` | `staging` | `production` | — |
+| Contracts | — | `staging` | `production` | — |
