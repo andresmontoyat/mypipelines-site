@@ -1,0 +1,39 @@
+---
+title: "Ruleset Tags"
+slug: "ruleset-tags"
+stack: "shared"
+kind: "ruleset"
+type: "release"
+triggers: []
+description: "ruleset ruleset-tags"
+sourcePath: ".github/ruleset/ruleset-tags.json"
+---
+
+```json title=".github/ruleset/ruleset-tags.json"
+{
+  "name": "Java • Protect release tags (vX.Y.Z immutable, restricted creation)",
+  "target": "tag",
+  "enforcement": "evaluate",
+  "conditions": {
+    "ref_name": {
+      "include": ["refs/tags/v[0-9]*.[0-9]*.[0-9]*"],
+      "exclude": []
+    },
+    "repository_name": {
+      "include": ["codehunters-ms-*", "codehunters-sdk-*", "codehunters-gw-*"],
+      "exclude": [],
+      "protected": false
+    }
+  },
+  "rules": [
+    { "type": "creation" },
+    { "type": "deletion" },
+    { "type": "non_fast_forward" },
+    { "type": "update" }
+  ],
+  "bypass_actors": [
+    { "actor_id": 5, "actor_type": "RepositoryRole", "bypass_mode": "always" },
+    { "actor_id": 15368, "actor_type": "Integration", "bypass_mode": "always" }
+  ]
+}
+```

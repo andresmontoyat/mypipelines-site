@@ -76,13 +76,23 @@ on:
         value: ${{ jobs.test.outputs.failed }}
       quality_gate_status:
         description: 'Quality Gate status (Sonar/Qodana)'
-        value: ${{ steps.quality-gate.outputs.quality-gate-status }}
+        value: ${{ jobs.test.outputs.quality_gate }}
+
+# Least privilege for what this workflow actually does. Without it the
+# job inherits whatever the calling repository's default happens to be,
+# which on older repositories is write-all.
+permissions:
+  contents: read
 
 jobs:
   test:
     name: Test & Coverage
     runs-on: ${{ inputs.runner }}
     timeout-minutes: 30
+
+    env:
+      SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+      SONAR_HOST_URL: ${{ secrets.SONAR_URL }}
 
     outputs:
       result: ${{ steps.test-run.outcome }}
@@ -93,10 +103,10 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v5
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
 
       - name: Setup Node.js ${{ inputs.node_version }}
-        uses: actions/setup-node@v5
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020  # v7.0.0
         with:
           node-version: ${{ inputs.node_version }}
           cache: ${{ inputs.package_manager }}
@@ -113,23 +123,23 @@ jobs:
     # SONARQUBE ANALYSIS
     # ============================================
       - name: SonarQube Scan
-        if: inputs.run_code_analysis && inputs.code_analysis_tool == 'sonar' && secrets.SONAR_TOKEN != ''
-        uses: SonarSource/sonarqube-scan-action@v4
+        if: inputs.run_code_analysis && inputs.code_analysis_tool == 'sonar' && env.SONAR_TOKEN != ''
+        uses: SonarSource/sonarqube-scan-action@ba9859eae8dd6bd29e412f25ddbbef3d032000f4  # v8.2.2
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
           SONAR_HOST_URL: ${{ secrets.SONAR_URL }}
 
       - name: SonarQube Quality Gate
         id: quality-gate
-        if: inputs.run_code_analysis && inputs.code_analysis_tool == 'sonar' && !inputs.skip_quality_gate && secrets.SONAR_TOKEN != ''
-        uses: SonarSource/sonarqube-quality-gate-action@v1
+        if: inputs.run_code_analysis && inputs.code_analysis_tool == 'sonar' && !inputs.skip_quality_gate && env.SONAR_TOKEN != ''
+        uses: SonarSource/sonarqube-quality-gate-action@7a5fffe8e523c40e0c740b6bc2712ab503e52efa  # v1.2.1
         timeout-minutes: 5
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
           SONAR_HOST_URL: ${{ secrets.SONAR_URL }}
 
       - name: SonarQube Quality Gate Summary
-        if: inputs.run_code_analysis && inputs.code_analysis_tool == 'sonar' && !inputs.skip_quality_gate && secrets.SONAR_TOKEN != ''
+        if: inputs.run_code_analysis && inputs.code_analysis_tool == 'sonar' && !inputs.skip_quality_gate && env.SONAR_TOKEN != ''
         run: |
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "### SonarQube Quality Gate" >> $GITHUB_STEP_SUMMARY
@@ -232,7 +242,7 @@ jobs:
       # ============================================
       - name: Upload coverage reports
         if: inputs.upload_reports && inputs.run_coverage && always()
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
         with:
           name: coverage-reports-${{ github.run_id }}
           path: coverage/

@@ -39,6 +39,12 @@ on:
         description: 'Audit score (0-100)'
         value: ${{ jobs.test.outputs.score }}
 
+# Least privilege for what this workflow actually does. Without it the
+# job inherits whatever the calling repository's default happens to be,
+# which on older repositories is write-all.
+permissions:
+  contents: read
+
 jobs:
   test:
     name: Test & Audit
@@ -51,7 +57,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v5
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
 
       - name: Build Docker image
         run: docker build -t krakend-app:ci ${{ inputs.dockerfile_path }}

@@ -1,0 +1,44 @@
+---
+title: "Ruleset Ci Templates Tags"
+slug: "ruleset-ci-templates-tags"
+stack: "shared"
+kind: "ruleset"
+type: "release"
+triggers: []
+description: "ruleset ruleset-ci-templates-tags"
+sourcePath: ".github/ruleset/ruleset-ci-templates-tags.json"
+---
+
+```json title=".github/ruleset/ruleset-ci-templates-tags.json"
+{
+  "name": "ci-templates • Release tags are immutable",
+  "target": "tag",
+  "enforcement": "active",
+  "conditions": {
+    "ref_name": {
+      "include": [
+        "refs/tags/v[0-9]*.[0-9]*.[0-9]*"
+      ],
+      "exclude": []
+    }
+  },
+  "rules": [
+    {
+      "type": "deletion"
+    },
+    {
+      "type": "update"
+    },
+    {
+      "type": "non_fast_forward"
+    }
+  ],
+  "bypass_actors": [
+    {
+      "actor_id": 5,
+      "actor_type": "RepositoryRole",
+      "bypass_mode": "always"
+    }
+  ]
+}
+```

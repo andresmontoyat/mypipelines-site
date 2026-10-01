@@ -110,21 +110,6 @@ on:
         required: false
         type: string
         default: 'bug,pipeline-failure'
-      run_notifications:
-        description: 'Send notifications after pipeline completes'
-        required: false
-        type: boolean
-        default: false
-      notify_providers:
-        description: 'Notification providers (comma-separated: slack, teams)'
-        required: false
-        type: string
-        default: 'slack'
-      notify_mention_on_failure:
-        description: 'Mention on failure (Slack: @channel, Teams: @General)'
-        required: false
-        type: string
-        default: ''
       run_cleanup:
         description: 'Delete merged branch after deploy'
         required: false
@@ -189,13 +174,21 @@ on:
         type: boolean
         default: false
 
+      aws_role_to_assume:
+        description: >-
+          IAM role ARN to assume via GitHub OIDC, threaded down to the AWS jobs
+          below. Empty keeps the static-key path.
+        required: false
+        type: string
+        default: ''
+
     outputs:
       coverage:
         description: 'Code coverage percentage'
         value: ${{ jobs.test.outputs.coverage_percentage }}
       deploy_status:
         description: 'Deployment status'
-        value: ${{ jobs.deploy.outputs.deploy_status }}
+        value: ${{ jobs.deploy-s3.outputs.deploy_status || jobs.deploy-amplify.outputs.deploy_status }}
       deleted_branch:
         description: 'Name of deleted branch'
         value: ${{ jobs.cleanup.outputs.deleted_branch }}
@@ -208,6 +201,16 @@ on:
       release_changelog:
         description: 'Release changelog'
         value: ${{ jobs.release.outputs.changelog }}
+
+# Least privilege for what this workflow actually does. Without it the
+# job inherits whatever the calling repository's default happens to be,
+# which on older repositories is write-all.
+permissions:
+  contents: write
+  issues: write
+  # For the OIDC path in the AWS workflows below; a caller's grant is the
+  # ceiling for everything beneath it.
+  id-token: write
 
 jobs:
   # ============================================
@@ -284,16 +287,35 @@ jobs:
   # ============================================
   # DEPLOY - S3 or Amplify
   # ============================================
-  deploy:
-    name: Deploy (${{ inputs.deploy_target }})
+  deploy-s3:
+    name: Deploy (s3)
     if: |
       inputs.run_deploy &&
+      inputs.deploy_target == 's3' &&
       always() &&
       needs.build.result == 'success' &&
       (needs.test.result == 'success' || needs.test.result == 'skipped')
     needs: [build, test]
-    uses: ./.github/workflows/react-deploy-${{ inputs.deploy_target }}.yml
+    uses: ./.github/workflows/react-deploy-s3.yml
     with:
+      aws_role_to_assume: ${{ inputs.aws_role_to_assume }}
+      runner: ${{ inputs.runner }}
+      environment: ${{ inputs.environment }}
+      build_output_dir: ${{ inputs.build_output_dir }}
+    secrets: inherit
+
+  deploy-amplify:
+    name: Deploy (amplify)
+    if: |
+      inputs.run_deploy &&
+      inputs.deploy_target == 'amplify' &&
+      always() &&
+      needs.build.result == 'success' &&
+      (needs.test.result == 'success' || needs.test.result == 'skipped')
+    needs: [build, test]
+    uses: ./.github/workflows/react-deploy-amplify.yml
+    with:
+      aws_role_to_assume: ${{ inputs.aws_role_to_assume }}
       runner: ${{ inputs.runner }}
       environment: ${{ inputs.environment }}
       build_output_dir: ${{ inputs.build_output_dir }}
@@ -307,8 +329,8 @@ jobs:
     if: |
       inputs.run_release &&
       always() &&
-      needs.deploy.result == 'success'
-    needs: [deploy]
+      (needs.deploy-s3.result == 'success' || needs.deploy-amplify.result == 'success')
+    needs: [deploy-s3, deploy-amplify]
     uses: ./.github/workflows/shared-release.yml
     with:
       base_branch: ${{ github.ref_name }}
@@ -324,9 +346,9 @@ jobs:
     if: |
       inputs.run_cleanup &&
       always() &&
-      needs.deploy.result == 'success' &&
+      (needs.deploy-s3.result == 'success' || needs.deploy-amplify.result == 'success') &&
       (needs.release.result == 'success' || needs.release.result == 'skipped')
-    needs: [deploy, release]
+    needs: [deploy-s3, deploy-amplify, release]
     uses: ./.github/workflows/shared-delete-branch.yml
     secrets: inherit
 
@@ -338,28 +360,22 @@ jobs:
     if: |
       inputs.run_tag &&
       always() &&
-      needs.deploy.result == 'success'
-    needs: [build, test, deploy, cleanup, release]
+      (needs.deploy-s3.result == 'success' || needs.deploy-amplify.result == 'success')
+    needs: [build, test, deploy-s3, deploy-amplify, cleanup, release]
     uses: ./.github/workflows/shared-tag-release.yml
     secrets: inherit
 
   # ============================================
-  # NOTIFY - Notifications (runs last, always)
+  # NOTIFY - Slack notification (final, auto-derived)
   # ============================================
   notify:
     name: Notify
-    if: |
-      inputs.run_notifications &&
-      always()
-    needs: [build, test, deploy, cleanup, release, tag]
+    if: always()
+    needs: [commit-lint, security, dependency-review, build, test, deploy-s3, deploy-amplify, release, cleanup, tag]
     uses: ./.github/workflows/shared-notifications.yml
     with:
-      providers: ${{ inputs.notify_providers }}
-      status: ${{ (needs.build.result == 'failure' || needs.test.result == 'failure' || needs.deploy.result == 'failure') && 'failure' || (needs.build.result == 'cancelled') && 'cancelled' || 'success' }}
+      status: ${{ contains(needs.*.result, 'failure') && 'failure' || contains(needs.*.result, 'cancelled') && 'cancelled' || 'success' }}
       environment: ${{ inputs.environment }}
-      version: ${{ needs.release.outputs.version }}
-      changelog: ${{ needs.release.outputs.changelog }}
-      mention_on_failure: ${{ inputs.notify_mention_on_failure }}
     secrets: inherit
 
   # ============================================
@@ -370,10 +386,10 @@ jobs:
     if: |
       inputs.run_create_issue_on_failure &&
       always()
-    needs: [build, test, deploy, cleanup, release, tag]
+    needs: [build, test, deploy-s3, deploy-amplify, cleanup, release, tag]
     uses: ./.github/workflows/shared-create-issue-on-failure.yml
     with:
-      status: ${{ (needs.build.result == 'failure' || needs.test.result == 'failure' || needs.deploy.result == 'failure') && 'failure' || 'success' }}
+      status: ${{ (needs.build.result == 'failure' || needs.test.result == 'failure' || needs.deploy-s3.result == 'failure' || needs.deploy-amplify.result == 'failure') && 'failure' || 'success' }}
       environment: ${{ inputs.environment }}
       version: ${{ needs.release.outputs.version }}
       changelog: ${{ needs.release.outputs.changelog }}

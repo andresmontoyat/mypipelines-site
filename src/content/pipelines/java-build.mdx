@@ -20,8 +20,19 @@ on:
         required: false
         type: string
         default: 'ubuntu-latest'
+      container_image:
+        description: >-
+          Run the job inside this image (e.g.
+          ghcr.io/codehunters-io/ci-base-images:1.0.0). Empty = plain runner
+          with actions/setup-java. The image already carries the JDK, so the
+          per-run download is skipped and the version is pinned to the tag.
+          Gradle still comes from ./gradlew, and setup-gradle still runs for
+          its dependency cache.
+        required: false
+        type: string
+        default: ''
       java_version:
-        description: 'Java version'
+        description: 'Java version (ignored when container_image is set)'
         required: false
         type: string
         default: '21'
@@ -40,28 +51,70 @@ on:
         required: false
         type: string
         default: 'gradle'
+      upload_artifact:
+        description: 'Upload the built JAR so downstream jobs (Docker/ECR) reuse it instead of recompiling'
+        required: false
+        type: boolean
+        default: true
+      jar_path:
+        description: 'Directory to search for the bootable JAR'
+        required: false
+        type: string
+        default: 'bootstrap/build/libs'
+      artifact_retention_days:
+        description: 'Days to retain the uploaded JAR artifact'
+        required: false
+        type: number
+        default: 1
+
+    outputs:
+      artifact_name:
+        description: 'Name of the uploaded JAR artifact (empty when upload_artifact is false)'
+        value: ${{ jobs.build.outputs.artifact_name }}
+
+# Least privilege for what this workflow actually does. Without it the
+# job inherits whatever the calling repository's default happens to be,
+# which on older repositories is write-all.
+permissions:
+  contents: read
+  packages: read
 
 jobs:
   build:
     name: Build
     runs-on: ${{ inputs.runner }}
+    # `container:` takes an object or nothing at all, and there is no way to
+    # write "no container" as a string. fromJSON('null') is how you say it.
+    container: ${{ inputs.container_image != '' && fromJSON(format('{{"image":"{0}"}}', inputs.container_image)) || fromJSON('null') }}
     timeout-minutes: 15
+
+    outputs:
+      artifact_name: ${{ steps.jar-info.outputs.name }}
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v5
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
 
       - name: Setup JDK ${{ inputs.java_version }}
-        uses: actions/setup-java@v5
+        if: inputs.container_image == ''
+        uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6  # v6.0.1
         with:
           distribution: ${{ inputs.java_distribution }}
           java-version: ${{ inputs.java_version }}
 
+      - name: Report toolchain (container)
+        if: inputs.container_image != ''
+        run: |
+          echo "Container: ${{ inputs.container_image }}"
+          java -version
+
       - name: Setup Gradle
         if: inputs.build_tool == 'gradle'
-        uses: gradle/actions/setup-gradle@v4
+        uses: gradle/actions/setup-gradle@9c971963bec38e04b3d30dcc455b5382be2fdbfb  # v6.3.0
         with:
-          cache-read-only: ${{ github.ref != 'refs/heads/main' && github.ref != 'refs/heads/master' }}
+          # Build is the cache PRODUCER: always write so the downstream test job reuses
+          # compileJava outputs from the Gradle build cache instead of recompiling.
+          cache-read-only: false
 
       - name: Build (Gradle)
         if: inputs.build_tool == 'gradle'
@@ -80,6 +133,32 @@ jobs:
       - name: Spotless check
         if: inputs.run_spotless && inputs.build_tool == 'gradle'
         run: ./gradlew spotlessCheck --no-daemon --build-cache
+
+      # ============================================
+      # UPLOAD JAR — reused by the Docker/ECR job (no recompile downstream)
+      # ============================================
+      - name: Locate bootable JAR
+        id: jar-info
+        if: inputs.upload_artifact
+        run: |
+          JAR_FILE="$(find "${{ inputs.jar_path }}" -name '*.jar' -not -name '*-plain.jar' | head -1)"
+          if [ -z "$JAR_FILE" ]; then
+            echo "::error::No bootable JAR found under '${{ inputs.jar_path }}'."
+            exit 1
+          fi
+          echo "name=build-artifact-${{ github.run_id }}" >> "$GITHUB_OUTPUT"
+          echo "file=$JAR_FILE" >> "$GITHUB_OUTPUT"
+          echo "Bootable JAR: $JAR_FILE"
+
+      - name: Upload JAR artifact
+        if: inputs.upload_artifact
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
+        with:
+          name: ${{ steps.jar-info.outputs.name }}
+          path: ${{ steps.jar-info.outputs.file }}
+          retention-days: ${{ inputs.artifact_retention_days }}
+          if-no-files-found: error
+          compression-level: 0   # JAR is already a compressed zip; recompressing wastes runner time
 
       # ============================================
       # CLEANUP

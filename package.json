@@ -11,7 +11,7 @@
     "dev": "astro dev",
     "build": "node scripts/sync-pipelines.mjs && astro build",
     "preview": "astro preview",
-    "sync": "node scripts/sync-pipelines.mjs",
+    "sync": "node scripts/sync-pipelines.mjs --strict",
     "test": "node --test",
     "astro": "astro",
     "check": "astro check"

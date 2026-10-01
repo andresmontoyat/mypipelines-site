@@ -20,11 +20,21 @@ on:
         required: false
         type: string
         default: 'ubuntu-latest'
-      node_version:
-        description: 'Node.js version'
+      container_image:
+        description: >-
+          Run the job inside this image (e.g.
+          ghcr.io/codehunters-io/ci-base-images:1.0.0-node). Empty = plain
+          runner with actions/setup-node. A container already carrying the
+          toolchain skips the per-run Node download and pins the version to
+          the tag.
         required: false
         type: string
-        default: '22'
+        default: ''
+      node_version:
+        description: 'Node.js version (ignored when container_image is set)'
+        required: false
+        type: string
+        default: '20'
       package_manager:
         description: 'Package manager (npm, yarn, or pnpm)'
         required: false
@@ -51,10 +61,20 @@ on:
         description: 'Name of uploaded build artifact'
         value: ${{ jobs.build.outputs.artifact_name }}
 
+# Least privilege for what this workflow actually does. Without it the
+# job inherits whatever the calling repository's default happens to be,
+# which on older repositories is write-all.
+permissions:
+  contents: read
+  packages: read
+
 jobs:
   build:
     name: Build & Compile
     runs-on: ${{ inputs.runner }}
+    # `container:` takes an object or nothing at all, and there is no way to
+    # write "no container" as a string. fromJSON('null') is how you say it.
+    container: ${{ inputs.container_image != '' && fromJSON(format('{{"image":"{0}"}}', inputs.container_image)) || fromJSON('null') }}
     timeout-minutes: 15
 
     outputs:
@@ -62,17 +82,25 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v5
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
 
       - name: Setup pnpm
-        if: inputs.package_manager == 'pnpm'
-        uses: pnpm/action-setup@v4
+        if: inputs.package_manager == 'pnpm' && inputs.container_image == ''
+        uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413  # v6.1.0
 
       - name: Setup Node.js ${{ inputs.node_version }}
-        uses: actions/setup-node@v5
+        if: inputs.container_image == ''
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020  # v7.0.0
         with:
           node-version: ${{ inputs.node_version }}
           cache: ${{ inputs.package_manager }}
+
+      - name: Report toolchain (container)
+        if: inputs.container_image != ''
+        run: |
+          echo "Container: ${{ inputs.container_image }}"
+          node --version
+          npm --version
 
       - name: Install dependencies
         run: |
@@ -107,7 +135,7 @@ jobs:
           echo "Strict mode enabled (24KB EIP-170 limit)." >> $GITHUB_STEP_SUMMARY
 
       - name: Upload compiled artifacts
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
         with:
           name: contracts-build-${{ github.run_id }}
           path: |
