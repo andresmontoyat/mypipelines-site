@@ -171,6 +171,27 @@ on:
         required: false
         type: string
         default: 'linux/arm64'
+      # Trivy scan of the image before it is pushed
+      vulnerability_gate:
+        description: 'Fail the artifact job on a fixable vulnerability at or above scan_severity. false reports only.'
+        required: false
+        type: boolean
+        default: true
+      scan_severity:
+        description: 'Trivy severities the vulnerability gate acts on'
+        required: false
+        type: string
+        default: 'CRITICAL,HIGH'
+      trivyignores:
+        description: 'Path to a Trivy ignore file. Empty means none.'
+        required: false
+        type: string
+        default: ''
+      ignore_policy:
+        description: 'Path to a Trivy Rego ignore policy. Empty means none.'
+        required: false
+        type: string
+        default: ''
 
       # Deploy options
       run_deploy:
@@ -208,11 +229,6 @@ on:
         required: false
         type: string
         default: ''
-      inject_aws_credentials:
-        description: 'DEPRECATED. Forwarded to the deploy workflow: put the pipeline AWS credentials in the container environment. Off by default; see shared-deploy-ec2.yml. Removed in v2.'
-        required: false
-        type: boolean
-        default: false
 
       # EKS-specific options
       eks_cluster_name:
@@ -295,6 +311,9 @@ on:
       image_uri:
         description: 'Full Docker image URI'
         value: ${{ jobs.artifact-ecr.outputs.image_uri || jobs.artifact-github.outputs.image_uri }}
+      image_digest:
+        description: 'Digest of the pushed image'
+        value: ${{ jobs.artifact-ecr.outputs.image_digest }}
       coverage:
         description: 'Code coverage percentage (line)'
         value: ${{ jobs.test.outputs.coverage_percentage }}
@@ -493,6 +512,10 @@ jobs:
       runner: ${{ inputs.runner }}
       image_tag: ${{ inputs.image_tag }}
       docker_platform: ${{ inputs.docker_platform }}
+      vulnerability_gate: ${{ inputs.vulnerability_gate }}
+      scan_severity: ${{ inputs.scan_severity }}
+      trivyignores: ${{ inputs.trivyignores }}
+      ignore_policy: ${{ inputs.ignore_policy }}
       environment: ${{ inputs.environment }}
       # Reuse the JAR already built (and gated by passing tests) instead of recompiling.
       # build_from_source stays true only as a fallback when no artifact was uploaded.
@@ -523,6 +546,10 @@ jobs:
       java_distribution: ${{ inputs.java_distribution }}
       image_tag: ${{ inputs.image_tag }}
       docker_platform: ${{ inputs.docker_platform }}
+      vulnerability_gate: ${{ inputs.vulnerability_gate }}
+      scan_severity: ${{ inputs.scan_severity }}
+      trivyignores: ${{ inputs.trivyignores }}
+      ignore_policy: ${{ inputs.ignore_policy }}
       artifact_name: ${{ needs.build.outputs.artifact_name }}
       environment: ${{ inputs.environment }}
     secrets: inherit
@@ -564,6 +591,9 @@ jobs:
     with:
       runner: ${{ inputs.runner }}
       image_tag: ${{ needs.artifact-ecr.outputs.image_tag || needs.artifact-github.outputs.image_tag }}
+      # ECR's digest only: the deploys pull from AWS_ECR_URL, and a GHCR digest
+      # names the same bytes in a registry the deploy never reads.
+      image_digest: ${{ needs.artifact-ecr.outputs.image_digest }}
       docker_platform: ${{ inputs.docker_platform }}
       environment: ${{ inputs.environment }}
       memory_limit: ${{ inputs.memory_limit }}
@@ -572,7 +602,6 @@ jobs:
         SPRING_PROFILES_ACTIVE=${{ inputs.spring_profiles != '' && format('{0},{1}', inputs.spring_profiles, inputs.environment) || inputs.environment }}
         SERVER_CONTEXT_PATH=/${{ github.event.repository.name }}
       extra_volumes: ${{ inputs.extra_volumes }}
-      inject_aws_credentials: ${{ inputs.inject_aws_credentials }}
     secrets: inherit
 
   # ============================================
@@ -590,6 +619,9 @@ jobs:
     with:
       runner: ${{ inputs.runner }}
       image_tag: ${{ needs.artifact-ecr.outputs.image_tag || needs.artifact-github.outputs.image_tag }}
+      # ECR's digest only: the deploys pull from AWS_ECR_URL, and a GHCR digest
+      # names the same bytes in a registry the deploy never reads.
+      image_digest: ${{ needs.artifact-ecr.outputs.image_digest }}
       docker_platform: ${{ inputs.docker_platform }}
       environment: ${{ inputs.environment }}
       memory_limit: ${{ inputs.memory_limit }}
@@ -598,7 +630,6 @@ jobs:
         SPRING_PROFILES_ACTIVE=${{ inputs.spring_profiles != '' && format('{0},{1}', inputs.spring_profiles, inputs.environment) || inputs.environment }}
         SERVER_CONTEXT_PATH=/${{ github.event.repository.name }}
       extra_volumes: ${{ inputs.extra_volumes }}
-      inject_aws_credentials: ${{ inputs.inject_aws_credentials }}
     secrets: inherit
 
   # ============================================
@@ -617,6 +648,9 @@ jobs:
       aws_role_to_assume: ${{ inputs.aws_role_to_assume }}
       runner: ${{ inputs.runner }}
       image_tag: ${{ needs.artifact-ecr.outputs.image_tag || needs.artifact-github.outputs.image_tag }}
+      # ECR's digest only: the deploys pull from AWS_ECR_URL, and a GHCR digest
+      # names the same bytes in a registry the deploy never reads.
+      image_digest: ${{ needs.artifact-ecr.outputs.image_digest }}
       environment: ${{ inputs.environment }}
       cluster_name: ${{ inputs.eks_cluster_name }}
       namespace: ${{ inputs.eks_namespace }}

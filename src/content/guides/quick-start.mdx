@@ -18,7 +18,7 @@ on:
     branches: [main]
 jobs:
   pipeline:
-    uses: <org>/ci-templates/.github/workflows/java-main-pipeline.yml@v1
+    uses: <org>/ci-templates/.github/workflows/java-main-pipeline.yml@v2
     with:
       deploy_target: 'ec2-vpn'
       environment: 'prod'
