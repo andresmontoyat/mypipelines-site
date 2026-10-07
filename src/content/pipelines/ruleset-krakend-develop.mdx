@@ -1,33 +1,34 @@
 ---
-title: "Ruleset Main"
-slug: "ruleset-main"
+title: "Ruleset Krakend Develop"
+slug: "ruleset-krakend-develop"
 stack: "shared"
 kind: "ruleset"
 type: "misc"
 triggers: []
-description: "ruleset ruleset-main"
-sourcePath: ".github/ruleset/ruleset-main.json"
+description: "ruleset ruleset-krakend-develop"
+sourcePath: ".github/ruleset/ruleset-krakend-develop.json"
 ---
 
-```json title=".github/ruleset/ruleset-main.json"
+```json title=".github/ruleset/ruleset-krakend-develop.json"
 {
-  "name": "Java • Protect main (PR-only, 2 approvals, merge commit)",
+  "name": "KrakenD • Protect develop (PR-only, 2 approvals, linear, squash)",
   "target": "branch",
   "enforcement": "evaluate",
   "conditions": {
     "ref_name": {
-      "include": ["refs/heads/main"],
+      "include": ["refs/heads/develop"],
       "exclude": []
     },
     "repository_name": {
-      "include": ["codehunters-ms-*", "codehunters-sdk-*"],
-      "exclude": ["codehunters-ms-managment"],
+      "include": ["codehunters-gw-*"],
+      "exclude": [],
       "protected": false
     }
   },
   "rules": [
     { "type": "deletion" },
     { "type": "non_fast_forward" },
+    { "type": "required_linear_history" },
     {
       "type": "pull_request",
       "parameters": {
@@ -36,7 +37,7 @@ sourcePath: ".github/ruleset/ruleset-main.json"
         "require_last_push_approval": true,
         "required_approving_review_count": 2,
         "required_review_thread_resolution": true,
-        "allowed_merge_methods": ["merge"]
+        "allowed_merge_methods": ["squash"]
       }
     },
     {
@@ -44,7 +45,7 @@ sourcePath: ".github/ruleset/ruleset-main.json"
       "parameters": {
         "strict_required_status_checks_policy": true,
         "required_status_checks": [
-          { "context": "validate / PR Quality Gates" }
+          { "context": "validate / Test & Audit" }
         ]
       }
     }

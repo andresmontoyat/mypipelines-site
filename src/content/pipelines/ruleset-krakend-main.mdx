@@ -1,22 +1,22 @@
 ---
-title: "Ruleset Krakend"
-slug: "ruleset-krakend"
+title: "Ruleset Krakend Main"
+slug: "ruleset-krakend-main"
 stack: "shared"
 kind: "ruleset"
 type: "misc"
 triggers: []
-description: "ruleset ruleset-krakend"
-sourcePath: ".github/ruleset/ruleset-krakend.json"
+description: "ruleset ruleset-krakend-main"
+sourcePath: ".github/ruleset/ruleset-krakend-main.json"
 ---
 
-```json title=".github/ruleset/ruleset-krakend.json"
+```json title=".github/ruleset/ruleset-krakend-main.json"
 {
-  "name": "KrakenD • Protect develop+main (PR-only, 2 approvals, linear, squash)",
+  "name": "KrakenD • Protect main (PR-only, 2 approvals, merge commit)",
   "target": "branch",
   "enforcement": "evaluate",
   "conditions": {
     "ref_name": {
-      "include": ["refs/heads/develop", "refs/heads/main"],
+      "include": ["refs/heads/main"],
       "exclude": []
     },
     "repository_name": {
@@ -28,7 +28,6 @@ sourcePath: ".github/ruleset/ruleset-krakend.json"
   "rules": [
     { "type": "deletion" },
     { "type": "non_fast_forward" },
-    { "type": "required_linear_history" },
     {
       "type": "pull_request",
       "parameters": {
@@ -37,7 +36,7 @@ sourcePath: ".github/ruleset/ruleset-krakend.json"
         "require_last_push_approval": true,
         "required_approving_review_count": 2,
         "required_review_thread_resolution": true,
-        "allowed_merge_methods": ["squash"]
+        "allowed_merge_methods": ["merge"]
       }
     },
     {

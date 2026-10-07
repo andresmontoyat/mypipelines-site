@@ -25,6 +25,12 @@ on:
     branches:
       - 'release/**'
 
+# Deploys on one ref run one at a time, in order. Never cancel one mid-flight:
+# a half-applied deploy is worse than a late one.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
 permissions:
   contents: read
   id-token: write
@@ -32,7 +38,7 @@ permissions:
 jobs:
   deploy:
     if: ${{ !contains(github.event.head_commit.message, '[skip ci]') }}
-    uses: <org>/ci-templates/.github/workflows/react-main-pipeline.yml@v1
+    uses: <org>/ci-templates/.github/workflows/react-main-pipeline.yml@v2
     with:
       run_build: true
       run_test: true

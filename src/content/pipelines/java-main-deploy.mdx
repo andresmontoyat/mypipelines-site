@@ -19,8 +19,8 @@ sourcePath: "templates/java-main-deploy.yml"
 # Production is NOT deployed here. Promotion to prod is a MANUAL git tag (vX.Y.Z)
 # handled by tag-deploy.yml — do NOT enable run_tag here (tags must be created by a human).
 #
-# Required secrets: Same as develop-deploy.yml. Slack notifications are handled by a
-# separate workflow_run notifier (templates/notify.yml) via the org variable SLACK_WEBHOOK_URL.
+# Required secrets: Same as develop-deploy.yml. Slack notifications are built into the
+# pipeline (its notify job); see develop-deploy.yml or the README for the org settings.
 
 name: Deploy to Cert
 
@@ -29,6 +29,12 @@ on:
     branches:
       - main
 
+# Deploys on one ref run one at a time, in order. Never cancel one mid-flight:
+# a half-applied deploy is worse than a late one.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
 permissions:
   contents: read
   id-token: write
@@ -36,7 +42,7 @@ permissions:
 jobs:
   pipeline:
     if: ${{ !contains(github.event.head_commit.message, '[skip ci]') }}
-    uses: <org>/ci-templates/.github/workflows/java-main-pipeline.yml@v1
+    uses: <org>/ci-templates/.github/workflows/java-main-pipeline.yml@v2
     with:
       run_build: true
       run_test: false

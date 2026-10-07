@@ -24,6 +24,14 @@ on:
         description: 'Docker image tag to deploy'
         required: true
         type: string
+      image_digest:
+        description: >-
+          Digest to deploy (sha256:…). When set, the deploy pins the image by
+          digest and the tag is only a label. Empty deploys by tag, as Helm
+          deploys do and as any direct caller that passes no digest does.
+        required: false
+        type: string
+        default: ''
       environment:
         description: 'GitHub environment (develop, prod)'
         required: false
@@ -64,11 +72,6 @@ on:
         required: false
         type: string
         default: ''
-      inject_aws_credentials:
-        description: 'DEPRECATED. Put the pipeline AWS credentials in the container environment. These are build-plane keys that can push to ECR, so any code execution in the app reads them out of /proc/self/environ and can overwrite the image it is running. Prefer an EC2 instance profile, or pass a scoped runtime key through container_env_vars. Removed in v2.'
-        required: false
-        type: boolean
-        default: false
 
     secrets:
       AWS_ECR_URL:
@@ -207,6 +210,7 @@ jobs:
           AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           AWS_REGION: ${{ secrets.AWS_REGION }}
           IMAGE_TAG: ${{ inputs.image_tag }}
+          IMAGE_DIGEST: ${{ inputs.image_digest }}
           APP_PORT: ${{ secrets.AWS_APP_PORT }}
           REPO_NAME: ${{ steps.repo.outputs.name }}
           ENVIRONMENT: ${{ inputs.environment }}
@@ -216,11 +220,12 @@ jobs:
           INTERNAL_PORT: ${{ inputs.internal_port }}
           CONTAINER_ENV_VARS: ${{ inputs.container_env_vars }}
           EXTRA_VOLUMES: ${{ inputs.extra_volumes }}
-          INJECT_AWS_CREDENTIALS: ${{ inputs.inject_aws_credentials }}
         run: |
-          if [ "${INJECT_AWS_CREDENTIALS}" = "true" ]; then
-            echo "::warning::inject_aws_credentials is on: this deploy puts the pipeline's AWS keys inside the application container. They can push to ECR. Move to an EC2 instance profile or a scoped runtime key; this input is removed in v2."
-          fi
+          # Computed on the runner and shipped in deploy.env: the compose file and
+          # the pull live in deploy.sh, which runs on the host and sees only that file.
+          IMAGE_REPO="${AWS_ECR_URL}/${REPO_NAME}"
+          IMAGE_REF="${IMAGE_REPO}:${IMAGE_TAG}"
+          if [ -n "${IMAGE_DIGEST}" ]; then IMAGE_REF="${IMAGE_REPO}@${IMAGE_DIGEST}"; fi
 
           # Setup SSH
           mkdir -p ~/.ssh
@@ -269,23 +274,20 @@ jobs:
           # Login to ECR
           echo "Logging in to ECR..."
           aws ecr get-login-password --region ${AWS_REGION} | docker login --username AWS --password-stdin ${AWS_ECR_URL}
+          # The keys did their job: docker pull uses the login above, not these. Unset them so
+          # a container_env_vars line that names one (or interpolates it) cannot pass the
+          # build-plane keys, which can push to ECR, into the application container.
+          unset AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY
 
           # Decode env vars from base64
           CONTAINER_ENV_VARS=$(echo "${CONTAINER_ENV_VARS_B64}" | base64 -d)
           EXTRA_VOLUMES=$(echo "${EXTRA_VOLUMES_B64}" | base64 -d)
 
-          # AWS credentials for the application, kept out of docker-compose.yml.
-          # umask inside a subshell rather than chmod afterwards: chmod leaves a
-          # window in which the file already exists and is world-readable.
-          if [ "${INJECT_AWS_CREDENTIALS}" = "true" ]; then
-            ( umask 077
-              printf 'AWS_ACCESS_KEY_ID=%s\nAWS_SECRET_ACCESS_KEY=%s\n' \
-                "${AWS_ACCESS_KEY_ID}" "${AWS_SECRET_ACCESS_KEY}" > .aws.env )
-            echo "Wrote .aws.env (mode $(stat -c '%a' .aws.env))"
-          else
-            rm -f .aws.env
-            echo "inject_aws_credentials=false - nothing written; the instance profile supplies credentials."
-          fi
+          # The container never gets the pipeline's AWS keys: they can push to ECR, and
+          # the application reads its own credentials from the instance profile. A host
+          # last deployed by a v1 caller may still hold the .aws.env that v1 wrote with
+          # those keys, so it is removed here rather than left on disk.
+          rm -f .aws.env
 
           # Create docker-compose.yml (standard name)
           COMPOSE_FILE_NAME="docker-compose.yml"
@@ -293,7 +295,7 @@ jobs:
           {
             echo "services:"
             echo "  ${REPO_NAME}:"
-            echo "    image: ${AWS_ECR_URL}/${REPO_NAME}:${IMAGE_TAG}"
+            echo "    image: ${IMAGE_REF}"
             echo "    platform: ${DOCKER_PLATFORM}"
             echo "    container_name: ${REPO_NAME}"
             echo "    restart: unless-stopped"
@@ -301,13 +303,6 @@ jobs:
             echo "      - APP_NAME=${REPO_NAME}"
             echo "      - PATH_LOGS=/app/log/${REPO_NAME}"
             echo "      - AWS_REGION=${AWS_REGION}"
-            # The two keys are deliberately not echoed here. docker-compose.yml
-            # persists in the deploy directory with default permissions long
-            # after the deploy; they go to .aws.env, mode 600, referenced below.
-            if [ "${INJECT_AWS_CREDENTIALS}" = "true" ]; then
-              echo "    env_file:"
-              echo "      - .aws.env"
-            fi
             if [ -n "${CONTAINER_ENV_VARS}" ]; then
               while IFS= read -r line; do
                 if [ -n "$line" ]; then
@@ -361,7 +356,7 @@ jobs:
 
           # Pull latest image from ECR
           echo "Pulling latest image..."
-          docker pull ${AWS_ECR_URL}/${REPO_NAME}:${IMAGE_TAG}
+          docker pull "${IMAGE_REF}"
 
           # Stop existing container if running (force-kill fallback if hung)
           if docker ps -aq -f name=${REPO_NAME} 2>/dev/null | grep -q .; then
@@ -374,11 +369,15 @@ jobs:
             fi
           fi
 
-          # Remove only old images for this repo (keep the new one)
+          # Remove every image of this repo except the one about to start. By image
+          # ID, not by tag: an image pulled by digest has no tag, lists as
+          # repo:<none>, and `docker rmi repo:<none>` fails, so a tag filter would
+          # never remove anything once digest deploys start. -f because one ID can
+          # carry several refs (a tag and a digest), and rmi without it refuses.
           echo "Removing old images for ${REPO_NAME}..."
-          docker images "${AWS_ECR_URL}/${REPO_NAME}" --format '{{.Repository}}:{{.Tag}}' \
-            | grep -v ":${IMAGE_TAG}$" \
-            | xargs -r docker rmi 2>/dev/null || true
+          KEEP=$(docker image inspect --format '{{.Id}}' "${IMAGE_REF}")
+          docker images "${AWS_ECR_URL}/${REPO_NAME}" --no-trunc --format '{{.ID}}' \
+            | sort -u | grep -vxF "$KEEP" | xargs -r docker rmi -f 2>/dev/null || true
 
           # Start new container
           echo "Starting new container..."
@@ -433,7 +432,10 @@ jobs:
             {
               printf 'REPO_NAME=%q\n'               "$REPO_NAME"
               printf 'IMAGE_TAG=%q\n'               "$IMAGE_TAG"
+              printf 'IMAGE_REF=%q\n'               "$IMAGE_REF"
               printf 'AWS_ECR_URL=%q\n'             "$AWS_ECR_URL"
+              # The keys stay on the host side: deploy.sh needs them for the ECR login,
+              # then unsets them before compose runs, so nothing can pass them on.
               printf 'AWS_ACCESS_KEY_ID=%q\n'       "$AWS_ACCESS_KEY_ID"
               printf 'AWS_SECRET_ACCESS_KEY=%q\n'   "$AWS_SECRET_ACCESS_KEY"
               printf 'AWS_REGION=%q\n'              "$AWS_REGION"
@@ -443,7 +445,6 @@ jobs:
               printf 'MEMORY_LIMIT=%q\n'            "$MEMORY_LIMIT"
               printf 'MEMORY_RESERVATION=%q\n'      "$MEMORY_RESERVATION"
               printf 'INTERNAL_PORT=%q\n'           "$INTERNAL_PORT"
-              printf 'INJECT_AWS_CREDENTIALS=%q\n'  "$INJECT_AWS_CREDENTIALS"
               printf 'CONTAINER_ENV_VARS_B64=%q\n'  "$CONTAINER_ENV_VARS_B64"
               printf 'EXTRA_VOLUMES_B64=%q\n'       "$EXTRA_VOLUMES_B64"
             } | ssh $SSH_COMMON_OPTS "${AWS_EC2_USER}@${AWS_EC2_HOST}" 'umask 077 && cat > ~/deploy.env'
@@ -469,13 +470,19 @@ jobs:
 
           # Post-deploy verification: if container is running w/ correct image, success regardless of transport error
           echo "Verifying container state..."
-          VERIFY_OUTPUT=$(ssh $SSH_COMMON_OPTS ${AWS_EC2_USER}@${AWS_EC2_HOST} "docker ps --filter name=^${REPO_NAME}$ --format '{{.Image}}|{{.Status}}' 2>/dev/null" || echo "")
+          # docker inspect, not docker ps: for a container created from repo@sha256:…
+          # `docker ps` prints the short image ID, while .Config.Image keeps the ref
+          # the container was created from, in both the digest and the tag form.
+          VERIFY_OUTPUT=$(ssh $SSH_COMMON_OPTS ${AWS_EC2_USER}@${AWS_EC2_HOST} "docker inspect --format '{{.Config.Image}}|{{.State.Status}}' '${REPO_NAME}' 2>/dev/null" || echo "")
           RUNNING_IMAGE=$(echo "$VERIFY_OUTPUT" | cut -d'|' -f1)
           RUNNING_STATUS=$(echo "$VERIFY_OUTPUT" | cut -d'|' -f2)
           echo "Container image: '$RUNNING_IMAGE'"
           echo "Container status: '$RUNNING_STATUS'"
 
-          if echo "$RUNNING_IMAGE" | grep -q "${REPO_NAME}:${IMAGE_TAG}$"; then
+          # Exact equality, not a pattern: a tag 1.2.3 must not match 1.2.30, and
+          # '@sha256:' needs no escaping. The status check keeps what `docker ps`
+          # used to imply, since inspect also answers for a stopped container.
+          if [ "$RUNNING_IMAGE" = "$IMAGE_REF" ] && [ "$RUNNING_STATUS" = "running" ]; then
             echo "Container is running with target image."
             echo "status=success" >> $GITHUB_OUTPUT
           elif [ "$DEPLOY_RC" -eq 0 ]; then
