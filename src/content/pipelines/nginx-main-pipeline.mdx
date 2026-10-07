@@ -124,6 +124,27 @@ on:
         required: false
         type: string
         default: 'linux/arm64'
+      # Trivy scan of the image before it is pushed
+      vulnerability_gate:
+        description: 'Fail the artifact job on a fixable vulnerability at or above scan_severity. false reports only.'
+        required: false
+        type: boolean
+        default: true
+      scan_severity:
+        description: 'Trivy severities the vulnerability gate acts on'
+        required: false
+        type: string
+        default: 'CRITICAL,HIGH'
+      trivyignores:
+        description: 'Path to a Trivy ignore file. Empty means none.'
+        required: false
+        type: string
+        default: ''
+      ignore_policy:
+        description: 'Path to a Trivy Rego ignore policy. Empty means none.'
+        required: false
+        type: string
+        default: ''
 
       # Deploy options
       environment:
@@ -157,11 +178,6 @@ on:
         type: string
         default: |
           - ./certs:/etc/nginx/certs:ro
-      inject_aws_credentials:
-        description: 'DEPRECATED. Forwarded to the deploy workflow: put the pipeline AWS credentials in the container environment. Off by default; see shared-deploy-ec2.yml. Removed in v2.'
-        required: false
-        type: boolean
-        default: false
 
       # EKS-specific options
       eks_cluster_name:
@@ -222,6 +238,9 @@ on:
       image_uri:
         description: 'Full Docker image URI'
         value: ${{ jobs.artifact.outputs.image_uri }}
+      image_digest:
+        description: 'Digest of the pushed image'
+        value: ${{ jobs.artifact.outputs.image_digest }}
       deploy_status:
         description: 'Deployment status'
         value: ${{ jobs.deploy-ec2.outputs.deploy_status || jobs.deploy-ec2-vpn.outputs.deploy_status || jobs.deploy-eks.outputs.deploy_status }}
@@ -327,6 +346,10 @@ jobs:
       runner: ${{ inputs.runner }}
       image_tag: ${{ inputs.image_tag }}
       docker_platform: ${{ inputs.docker_platform }}
+      vulnerability_gate: ${{ inputs.vulnerability_gate }}
+      scan_severity: ${{ inputs.scan_severity }}
+      trivyignores: ${{ inputs.trivyignores }}
+      ignore_policy: ${{ inputs.ignore_policy }}
       dockerfile_path: ${{ inputs.dockerfile_path }}
       environment: ${{ inputs.environment }}
       build_from_source: false
@@ -347,6 +370,7 @@ jobs:
     with:
       runner: ${{ inputs.runner }}
       image_tag: ${{ needs.artifact.outputs.image_tag }}
+      image_digest: ${{ needs.artifact.outputs.image_digest }}
       docker_platform: ${{ inputs.docker_platform }}
       environment: ${{ inputs.environment }}
       memory_limit: ${{ inputs.memory_limit }}
@@ -354,7 +378,6 @@ jobs:
       internal_port: ${{ inputs.internal_port }}
       container_env_vars: ${{ inputs.container_env_vars }}
       extra_volumes: ${{ inputs.extra_volumes }}
-      inject_aws_credentials: ${{ inputs.inject_aws_credentials }}
     secrets: inherit
 
   # ============================================
@@ -372,6 +395,7 @@ jobs:
     with:
       runner: ${{ inputs.runner }}
       image_tag: ${{ needs.artifact.outputs.image_tag }}
+      image_digest: ${{ needs.artifact.outputs.image_digest }}
       docker_platform: ${{ inputs.docker_platform }}
       environment: ${{ inputs.environment }}
       memory_limit: ${{ inputs.memory_limit }}
@@ -379,7 +403,6 @@ jobs:
       internal_port: ${{ inputs.internal_port }}
       container_env_vars: ${{ inputs.container_env_vars }}
       extra_volumes: ${{ inputs.extra_volumes }}
-      inject_aws_credentials: ${{ inputs.inject_aws_credentials }}
     secrets: inherit
 
   # ============================================
@@ -398,6 +421,7 @@ jobs:
       aws_role_to_assume: ${{ inputs.aws_role_to_assume }}
       runner: ${{ inputs.runner }}
       image_tag: ${{ needs.artifact.outputs.image_tag }}
+      image_digest: ${{ needs.artifact.outputs.image_digest }}
       environment: ${{ inputs.environment }}
       cluster_name: ${{ inputs.eks_cluster_name }}
       namespace: ${{ inputs.eks_namespace }}

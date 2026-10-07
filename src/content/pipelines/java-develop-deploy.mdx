@@ -34,8 +34,9 @@ sourcePath: "templates/java-develop-deploy.yml"
 #   - WG_PRIVATE_KEY, WG_ADDRESS, WG_PEER_PUBLIC_KEY, WG_PEER_ALLOWED_IPS, WG_PEER_ENDPOINT
 #   - WG_DNS (optional)
 #
-#   Notifications: handled by a separate workflow_run notifier (templates/notify.yml).
-#   Set the org variable SLACK_WEBHOOK_URL.
+#   Notifications: built into the pipeline (its notify job), nothing to add here.
+#   Org secret SLACK_BOT_TOKEN; org variables SLACK_CHANNEL_DEPLOY, SLACK_CHANNEL_PR
+#   and SLACK_CHANNEL (fallback). Deploys post every outcome, PR runs only failures.
 #
 #   Optional:
 #   - SONAR_HOST_URL / SONAR_TOKEN: SonarQube
@@ -48,6 +49,12 @@ on:
     branches:
       - develop
 
+# Deploys on one ref run one at a time, in order. Never cancel one mid-flight:
+# a half-applied deploy is worse than a late one.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
 permissions:
   contents: write
   id-token: write
@@ -57,7 +64,7 @@ permissions:
 jobs:
   pipeline:
     if: ${{ !contains(github.event.head_commit.message, '[skip ci]') }}
-    uses: <org>/ci-templates/.github/workflows/java-main-pipeline.yml@v1
+    uses: <org>/ci-templates/.github/workflows/java-main-pipeline.yml@v2
     with:
       run_build: true
       # Validation already done upstream (feature branch + PR gate) — develop only builds + deploys.

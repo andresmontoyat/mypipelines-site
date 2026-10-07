@@ -32,6 +32,12 @@ on:
         type: boolean
         default: false
 
+# Deploys on one ref run one at a time, in order. Never cancel one mid-flight:
+# a half-applied deploy is worse than a late one.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
 permissions:
   contents: read
   packages: write
@@ -42,7 +48,7 @@ jobs:
     # A release tag, never @main. Consumers copy this file verbatim, so the ref
     # named here is what runs in their repository — @main would push every
     # commit of this repo straight into them with no review and no version bump.
-    uses: Codehunters-IO/ci-templates/.github/workflows/shared-build-publish-image.yml@v1
+    uses: Codehunters-IO/ci-templates/.github/workflows/shared-build-publish-image.yml@v2
     with:
       push_rolling: ${{ inputs.push_rolling || false }}
       # Optional. Receives IMAGE plus each image's smoke_env. Drop it and the
@@ -66,4 +72,14 @@ jobs:
             "smoke_env": "KIND=runtime"
           }
         ]
+
+  # Optional: sign every pushed digest with cosign keyless. Uncomment the job
+  # and add `id-token: write` to the permissions block above. It runs after the
+  # publish job and signs exactly the digests that job pushed. Consumers verify
+  # with `cosign verify` against this repository's workflow identity; see the
+  # ci-templates README, "Signing images".
+  #
+  # sign:
+  #   needs: build-publish
+  #   uses: Codehunters-IO/ci-templates/.github/workflows/shared-sign-images.yml@v2
 ```
