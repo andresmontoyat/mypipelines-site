@@ -81,6 +81,7 @@ test('collectSources finds workflows, templates, rulesets, CODEOWNERS', () => {
   assert.deepEqual(rels, [
     '.github/CODEOWNERS',
     '.github/ruleset/ruleset-main.json',
+    '.github/workflows/comment-bot.yml',
     '.github/workflows/java-build.yml',
     'templates/java-main-deploy.yml',
   ]);
@@ -110,6 +111,15 @@ import { mkdirSync, writeFileSync, existsSync } from 'node:fs';
 test('collectSources skips files that are not pipeline sources', () => {
   const rels = collectSources('tests/fixtures/ci-templates').map((s) => s.relPath);
   assert.ok(!rels.includes('.github/ruleset/README.md'));
+});
+
+// Comment-driven bots serve the templates repo itself; consumers never call them.
+test('generate skips workflows triggered by comments', () => {
+  const dest = mkdtempSync(join(tmpdir(), 'mp-'));
+  writeFileSync(join(dest, 'comment-bot.mdx'), '---\n---\n', 'utf8');
+  generate('tests/fixtures/ci-templates', dest);
+  assert.equal(existsSync(join(dest, 'comment-bot.mdx')), false);
+  rmSync(dest, { recursive: true, force: true });
 });
 
 test('generate removes pages whose source no longer exists', () => {
