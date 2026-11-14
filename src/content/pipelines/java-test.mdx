@@ -82,7 +82,7 @@ on:
         type: boolean
         default: false
       owasp_fail_on_cvss:
-        description: 'CVSS score threshold to fail build (7 = HIGH+CRITICAL, 9 = CRITICAL only)'
+        description: 'Fail on any vulnerability with a CVSS score at or above this (7 = HIGH and up, 9 = CRITICAL only, 4 = MEDIUM and up)'
         required: false
         type: number
         default: 7
@@ -116,6 +116,29 @@ on:
         required: false
         type: string
         default: 'gradle'
+      test_tasks:
+        description: >-
+          Gradle tasks the test step runs. `check` runs every verification task the build
+          defines (per-module coverage rules, convention checks), not only the tests.
+        required: false
+        type: string
+        default: 'test jacocoTestReport'
+      extra_gradle_commands:
+        description: >-
+          Further Gradle invocations after the tests, one per line, each passed to ./gradlew
+          as is (e.g. "-p build-logic test" for an included build). A failure fails the job.
+        required: false
+        type: string
+        default: ''
+      docker_images:
+        description: >-
+          Container images the integration tests start, one per line. Pulled before the
+          tests, from Docker Hub and then from its public mirrors (mirror.gcr.io,
+          public.ecr.aws/docker). Testcontainers otherwise pulls lazily and reports a failed
+          Docker Hub pull only as ContainerFetchException after a five-minute wait.
+        required: false
+        type: string
+        default: ''
 
     outputs:
       result:
@@ -153,6 +176,12 @@ permissions:
   contents: read
   packages: read
 
+# Inputs reach scripts through env, never spliced into them: an
+# interpolated value is parsed as shell, an env var is only data.
+env:
+  JAR_PATH: ${{ inputs.jar_path }}
+  CONTAINER_IMAGE: ${{ inputs.container_image }}
+
 jobs:
   test:
     name: Test
@@ -163,7 +192,7 @@ jobs:
     timeout-minutes: 30
 
     outputs:
-      result: ${{ steps.test-run.outcome }}
+      result: ${{ steps.test-check.outcome }}
       coverage: ${{ steps.coverage.outputs.percentage }}
       coverage_instruction: ${{ steps.jacoco-log.outputs.instruction_pct }}
       coverage_branch: ${{ steps.jacoco-log.outputs.branch_pct }}
@@ -178,10 +207,11 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
           fetch-depth: 0
+          persist-credentials: false
 
       - name: Setup JDK ${{ inputs.java_version }}
         if: inputs.container_image == ''
-        uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6  # v6.0.1
+        uses: actions/setup-java@77dd5b2ce225ea11469928ac317850245a74ae78  # v6.2.0
         with:
           distribution: ${{ inputs.java_distribution }}
           java-version: ${{ inputs.java_version }}
@@ -189,18 +219,65 @@ jobs:
       - name: Report toolchain (container)
         if: inputs.container_image != ''
         run: |
-          echo "Container: ${{ inputs.container_image }}"
+          echo "Container: $CONTAINER_IMAGE"
           java -version
 
       - name: Setup Gradle
         if: inputs.build_tool == 'gradle'
-        uses: gradle/actions/setup-gradle@9c971963bec38e04b3d30dcc455b5382be2fdbfb  # v6.3.0
+        uses: gradle/actions/setup-gradle@8da46b539cd8fe6ab27ca75128919a18d757604c  # v6.4.1
         with:
           cache-read-only: ${{ github.ref != 'refs/heads/main' && github.ref != 'refs/heads/master' }}
 
       # ============================================
       # RUN TESTS
       # ============================================
+      - name: Pull the integration-test images
+        if: inputs.docker_images != ''
+        shell: bash
+        env:
+          IMAGES: ${{ inputs.docker_images }}
+        run: |
+          set -euo pipefail
+          mirrors=("mirror.gcr.io" "public.ecr.aws/docker")
+
+          # Docker Hub names official images without library/; the mirrors need it.
+          qualified() {
+            if [[ "$1" == */* ]]; then echo "$1"; else echo "library/$1"; fi
+          }
+
+          # A mirrored image is tagged with its Docker Hub name, the one Testcontainers looks up.
+          pull_from_mirror() {
+            local mirror mirrored
+            for mirror in "${mirrors[@]}"; do
+              mirrored="$mirror/$(qualified "$1")"
+              if docker pull --quiet "$mirrored"; then
+                docker tag "$mirrored" "$1"
+                echo "pulled $1 from $mirror"
+                return 0
+              fi
+              echo "::warning::docker pull $mirrored failed"
+            done
+            return 1
+          }
+
+          pull() {
+            local attempt
+            for attempt in 1 2; do
+              if docker pull --quiet "$1" || pull_from_mirror "$1"; then
+                return 0
+              fi
+              echo "::warning::could not pull $1 from Docker Hub or its mirrors (attempt $attempt)"
+              sleep 30
+            done
+            echo "::error::could not pull $1"
+            return 1
+          }
+
+          while read -r image; do
+            [ -n "$image" ] || continue
+            pull "$image"
+          done <<< "$IMAGES"
+
       - name: Run tests (Gradle)
         id: test-run
         if: inputs.build_tool == 'gradle'
@@ -210,7 +287,34 @@ jobs:
         # No 'clean build': compileJava is served FROM-CACHE (produced by the build job via
         # --build-cache). Only test sources compile here, then tests + coverage run. The jar
         # is NOT re-assembled (the build job already built and uploaded it).
-        run: ./gradlew test jacocoTestReport --no-daemon --build-cache --parallel || true
+        # The exit code is recorded, not swallowed: the report steps below still run, and
+        # "Check test results" fails on it. A bare `|| true` here turned a test-compilation
+        # error, or a failing test the XML scan below did not find, into a green job.
+          TEST_TASKS: ${{ inputs.test_tasks }}
+        run: |
+          set +e
+          # Word splitting is the point: TEST_TASKS is a list of Gradle tasks.
+          # shellcheck disable=SC2086
+          ./gradlew $TEST_TASKS --no-daemon --build-cache --parallel
+          echo "exit_code=$?" >> "$GITHUB_OUTPUT"
+
+      - name: Extra Gradle commands
+        if: inputs.build_tool == 'gradle' && inputs.extra_gradle_commands != ''
+        shell: bash
+        env:
+          GH_PACKAGES_USERNAME: ${{ secrets.GH_PACKAGES_USERNAME }}
+          GH_PACKAGES_TOKEN: ${{ secrets.GH_PACKAGES_TOKEN }}
+          COMMANDS: ${{ inputs.extra_gradle_commands }}
+        run: |
+          set -euo pipefail
+          while read -r line; do
+            [ -n "$line" ] || continue
+            echo "::group::./gradlew $line"
+            # Word splitting is the point: each line is a list of Gradle arguments.
+            # shellcheck disable=SC2086
+            ./gradlew $line --no-daemon --build-cache
+            echo "::endgroup::"
+          done <<< "$COMMANDS"
 
       - name: Run tests (Maven)
         id: test-run-maven
@@ -218,7 +322,10 @@ jobs:
         env:
           GH_PACKAGES_USERNAME: ${{ secrets.GH_PACKAGES_USERNAME }}
           GH_PACKAGES_TOKEN: ${{ secrets.GH_PACKAGES_TOKEN }}
-        run: mvn clean verify -B || true
+        run: |
+          set +e
+          mvn clean verify -B
+          echo "exit_code=$?" >> "$GITHUB_OUTPUT"
 
       # ============================================
       # SONAR ANALYSIS (optional)
@@ -393,28 +500,27 @@ jobs:
           FAILED=0
           SKIPPED=0
 
-          # Search in both Gradle and Maven output directories
-          for dir in "build/test-results" "target/surefire-reports"; do
-            if [ -d "$dir" ]; then
-              # NUL-delimited: report paths come from test class names, and a word-split
-              # `for` breaks on the first one with a space in a parameterised display name.
-              while IFS= read -r -d '' file; do
-                if [ -f "$file" ]; then
-                  FILE_TESTS=$(grep -oP 'tests="\K[0-9]+' "$file" 2>/dev/null | head -1 || echo "0")
-                  FILE_FAILURES=$(grep -oP 'failures="\K[0-9]+' "$file" 2>/dev/null | head -1 || echo "0")
-                  FILE_ERRORS=$(grep -oP 'errors="\K[0-9]+' "$file" 2>/dev/null | head -1 || echo "0")
-                  FILE_SKIPPED=$(grep -oP 'skipped="\K[0-9]+' "$file" 2>/dev/null | head -1 || echo "0")
+          # Every module's Gradle and Maven reports, not just the root project's: in a
+          # multi-module build (domain/, application/, bootstrap/...) the root has none, and
+          # scanning only ./build/test-results counted zero failures whatever happened.
+          # NUL-delimited: report paths come from test class names, and a word-split `for`
+          # breaks on the first one with a space in a parameterised display name.
+          while IFS= read -r -d '' file; do
+            if [ -f "$file" ]; then
+              FILE_TESTS=$(grep -oP 'tests="\K[0-9]+' "$file" 2>/dev/null | head -1 || echo "0")
+              FILE_FAILURES=$(grep -oP 'failures="\K[0-9]+' "$file" 2>/dev/null | head -1 || echo "0")
+              FILE_ERRORS=$(grep -oP 'errors="\K[0-9]+' "$file" 2>/dev/null | head -1 || echo "0")
+              FILE_SKIPPED=$(grep -oP 'skipped="\K[0-9]+' "$file" 2>/dev/null | head -1 || echo "0")
 
-                  TOTAL_FAILED=$((FILE_FAILURES + FILE_ERRORS))
-                  FILE_PASSED=$((FILE_TESTS - TOTAL_FAILED - FILE_SKIPPED))
+              TOTAL_FAILED=$((FILE_FAILURES + FILE_ERRORS))
+              FILE_PASSED=$((FILE_TESTS - TOTAL_FAILED - FILE_SKIPPED))
 
-                  PASSED=$((PASSED + FILE_PASSED))
-                  FAILED=$((FAILED + TOTAL_FAILED))
-                  SKIPPED=$((SKIPPED + FILE_SKIPPED))
-                fi
-              done < <(find "$dir" -name "*.xml" -print0 2>/dev/null)
+              PASSED=$((PASSED + FILE_PASSED))
+              FAILED=$((FAILED + TOTAL_FAILED))
+              SKIPPED=$((SKIPPED + FILE_SKIPPED))
             fi
-          done
+          done < <(find . -name "*.xml" \( -path "*/build/test-results/*" -o -path "*/target/surefire-reports/*" \) \
+                     -not -path "*/node_modules/*" -print0 2>/dev/null)
 
           echo "passed=$PASSED" >> $GITHUB_OUTPUT
           echo "failed=$FAILED" >> $GITHUB_OUTPUT
@@ -544,11 +650,20 @@ jobs:
           fi
 
       - name: Check test results
+        id: test-check
         if: always()
+        env:
+          FAILED: ${{ steps.test-summary.outputs.failed }}
+          EXIT_CODE: ${{ steps.test-run.outputs.exit_code || steps.test-run-maven.outputs.exit_code }}
         run: |
-          FAILED="${{ steps.test-summary.outputs.failed }}"
-          if [ "$FAILED" -gt 0 ]; then
+          if [ "${FAILED:-0}" -gt 0 ]; then
             echo "::error::$FAILED test(s) failed"
+            exit 1
+          fi
+          # Gradle/Maven failed without a failing test report: compilation, a crashed fork,
+          # a verification task. An empty code means the test step itself never ran.
+          if [ "${EXIT_CODE:-1}" != "0" ]; then
+            echo "::error::the test run exited with '${EXIT_CODE:-none}' and no test report explains it; see the test step log"
             exit 1
           fi
 
@@ -567,7 +682,7 @@ jobs:
 
       - name: Upload test reports
         if: inputs.upload_reports && !inputs.disable_artifacts && always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9  # v7.0.2
         with:
           name: test-reports-${{ github.run_id }}
           path: |
@@ -583,13 +698,13 @@ jobs:
         id: artifact-info
         if: inputs.upload_artifact && !inputs.disable_artifacts
         run: |
-          JAR_FILE=$(find ${{ inputs.jar_path }} -name "*.jar" -not -name "*-plain.jar" | head -1)
+          JAR_FILE=$(find "$JAR_PATH" -name "*.jar" -not -name "*-plain.jar" | head -1)
           echo "path=$JAR_FILE" >> $GITHUB_OUTPUT
-          echo "name=build-artifact-${{ github.run_id }}" >> $GITHUB_OUTPUT
+          echo "name=build-artifact-${GITHUB_RUN_ID}" >> $GITHUB_OUTPUT
 
       - name: Upload build artifact
         if: inputs.upload_artifact && !inputs.disable_artifacts
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9  # v7.0.2
         with:
           name: ${{ steps.artifact-info.outputs.name }}
           path: ${{ inputs.jar_path }}/*.jar
