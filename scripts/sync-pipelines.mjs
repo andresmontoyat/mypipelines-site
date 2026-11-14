@@ -116,9 +116,10 @@ function titleFor(slug, kind) {
 
 export function generate(rootDir, destDir) {
   mkdirSync(destDir, { recursive: true });
-  const sources = collectSources(rootDir);
-  for (const { relPath, lang } of sources) {
-    const raw = readFileSync(join(rootDir, relPath), 'utf8');
+  const sources = collectSources(rootDir)
+    .map((source) => ({ ...source, raw: readFileSync(join(rootDir, source.relPath), 'utf8') }))
+    .filter(({ raw }) => !isCommentBot(raw));
+  for (const { relPath, lang, raw } of sources) {
     const slug = toSlug(relPath);
     const stack = deriveStack(relPath);
     const kind = deriveKind(relPath);
@@ -146,6 +147,13 @@ export function generate(rootDir, destDir) {
   }
   pruneStale(destDir, new Set(sources.map(({ relPath }) => `${toSlug(relPath)}.mdx`)));
   return sources.length;
+}
+
+// Bots answering issue and review comments serve the templates repo itself: no consumer calls them.
+const COMMENT_TRIGGERS = ['issue_comment', 'pull_request_review_comment'];
+
+function isCommentBot(raw) {
+  return extractTriggers(raw).some((trigger) => COMMENT_TRIGGERS.includes(trigger));
 }
 
 // A page whose workflow was renamed or deleted upstream would otherwise keep being published.
