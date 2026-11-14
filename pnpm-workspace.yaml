@@ -3,6 +3,7 @@ allowBuilds:
   sharp: true
 
 overrides:
-  sharp: '^0.35.0'
-  fast-uri: '^3.1.4'
-  svgo: '^4.0.2'
+  sharp: '^0.35.5'
+  fast-uri: '^3.1.9'
+  svgo: '^4.1.0'
+  '@tailwindcss/typography>postcss-selector-parser': '^6.1.5'

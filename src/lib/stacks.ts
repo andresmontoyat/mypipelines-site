@@ -1,4 +1,4 @@
-export const STACK_ORDER = ['java', 'krakend', 'react', 'nginx', 'contracts', 'shared'] as const;
+export const STACK_ORDER = ['java', 'krakend', 'react', 'nginx', 'firebase', 'contracts', 'shared'] as const;
 export type Stack = (typeof STACK_ORDER)[number];
 
 export const STACK_LABELS: Record<Stack, string> = {
@@ -6,6 +6,7 @@ export const STACK_LABELS: Record<Stack, string> = {
   krakend: 'KrakenD',
   react: 'React',
   nginx: 'NGINX',
+  firebase: 'Firebase (pnpm monorepo)',
   contracts: 'Contracts (Hardhat/Solidity)',
   shared: 'Shared (cross-cutting)',
 };

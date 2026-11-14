@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  deriveStack, deriveKind, deriveType, extractDescription, extractTriggers, toSlug,
+  STACKS, deriveStack, deriveKind, deriveType, extractDescription, extractTriggers, toSlug,
 } from '../scripts/sync-pipelines.mjs';
 
 test('deriveStack from filename prefix', () => {
@@ -10,6 +10,15 @@ test('deriveStack from filename prefix', () => {
   assert.equal(deriveStack('.github/workflows/security-trufflehog.yml'), 'shared');
   assert.equal(deriveStack('.github/ruleset/ruleset-main.json'), 'shared');
   assert.equal(deriveStack('.github/CODEOWNERS'), 'shared');
+  assert.equal(deriveStack('.github/workflows/firebase-main-pipeline.yml'), 'firebase');
+  assert.equal(deriveStack('templates/java-library-publish.yml'), 'java');
+});
+
+// The site's content schema rejects a stack it does not list, so both lists must match.
+test('STACKS matches STACK_ORDER in src/lib/stacks.ts', () => {
+  const source = readFileSync(new URL('../src/lib/stacks.ts', import.meta.url), 'utf8');
+  const order = source.match(/STACK_ORDER = \[([^\]]*)\]/)[1].match(/'[^']+'/g).map((s) => s.slice(1, -1));
+  assert.deepEqual(STACKS, order);
 });
 
 test('deriveKind from path', () => {

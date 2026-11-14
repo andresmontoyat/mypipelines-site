@@ -21,15 +21,23 @@ on:
         type: string
         default: 'v'
       major_pattern:
-        description: 'Regex pattern for major version bump'
+        description: >-
+          Extended regex, matched per line of the commit subjects and bodies, for a major
+          bump: a Conventional Commits `BREAKING CHANGE:` footer or a `type!:` subject. The
+          old unanchored `(MAJOR|BREAKING CHANGE)` cut a major on prose anywhere in a body,
+          and a major here strands every consumer pinned to the previous alias.
         required: false
         type: string
-        default: '(MAJOR|BREAKING CHANGE)'
+        default: '^(BREAKING[ -]CHANGE:|[a-z]+(\([^)]*\))?!:)'
       minor_pattern:
-        description: 'Regex pattern for minor version bump'
+        description: >-
+          Extended regex, matched per line of the commit subjects and bodies, for a minor
+          bump. Anchored to a conventional `feat` type, as in shared-release.yml: the old
+          `(feat)` also matched "feature/..." or "defeat" anywhere in a body, so a tag could
+          come out a minor ahead of the release branch shared-release had cut.
         required: false
         type: string
-        default: '(feat)'
+        default: '^feat(\(|:|!)'
       annotated:
         description: >-
           Create an annotated tag. false creates a lightweight tag, which is what a
@@ -69,6 +77,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
           fetch-depth: 0
+          persist-credentials: true  # fetches tags, then pushes the release tag
 
       - name: Fetch all tags
         run: git fetch --tags --force
@@ -118,21 +127,26 @@ jobs:
       - name: Check if tag exists
         id: check-tag
         run: |
-          TAG="${{ inputs.tag_prefix }}${{ steps.semver.outputs.version }}"
+          TAG="${INPUTS_TAG_PREFIX}${STEPS_SEMVER_OUTPUTS_VERSION}"
           if git rev-parse "$TAG" >/dev/null 2>&1; then
             echo "exists=true" >> "$GITHUB_OUTPUT"
             echo "Tag $TAG already exists, skipping"
           else
             echo "exists=false" >> "$GITHUB_OUTPUT"
           fi
+        env:
+          INPUTS_TAG_PREFIX: ${{ inputs.tag_prefix }}
+          STEPS_SEMVER_OUTPUTS_VERSION: ${{ steps.semver.outputs.version }}
 
       - name: Create and push tag
         if: steps.check-tag.outputs.exists == 'false'
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           ANNOTATED: ${{ inputs.annotated }}
+          INPUTS_TAG_PREFIX: ${{ inputs.tag_prefix }}
+          STEPS_SEMVER_OUTPUTS_VERSION: ${{ steps.semver.outputs.version }}
         run: |
-          TAG="${{ inputs.tag_prefix }}${{ steps.semver.outputs.version }}"
+          TAG="${INPUTS_TAG_PREFIX}${STEPS_SEMVER_OUTPUTS_VERSION}"
 
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
@@ -151,8 +165,10 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           TAG_PREFIX: ${{ inputs.tag_prefix }}
+          INPUTS_TAG_PREFIX: ${{ inputs.tag_prefix }}
+          STEPS_SEMVER_OUTPUTS_VERSION: ${{ steps.semver.outputs.version }}
         run: |
-          TAG="${{ inputs.tag_prefix }}${{ steps.semver.outputs.version }}"
+          TAG="${INPUTS_TAG_PREFIX}${STEPS_SEMVER_OUTPUTS_VERSION}"
 
           # Get previous tag globally (skip the one we just created)
           PREV_TAG=$(git tag -l "${TAG_PREFIX}*" --sort=-v:refname | grep -v "^${TAG}$" | head -n1)
