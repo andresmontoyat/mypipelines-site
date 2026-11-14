@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import { basename, extname } from 'node:path';
 
-const STACKS = ['java', 'krakend', 'react', 'nginx', 'contracts', 'shared'];
+export const STACKS = ['java', 'krakend', 'react', 'nginx', 'firebase', 'contracts', 'shared'];
 
 export function toSlug(relPath) {
   const base = basename(relPath);

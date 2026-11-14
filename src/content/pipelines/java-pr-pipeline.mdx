@@ -15,6 +15,21 @@ name: Java - Pull Request Pipeline
 on:
   workflow_call:
     inputs:
+      test_tasks:
+        description: 'Gradle tasks of the test job (java-test.yml); `check` runs every verification task'
+        required: false
+        type: string
+        default: 'test jacocoTestReport'
+      extra_gradle_commands:
+        description: 'Gradle invocations after the tests, one per line (java-test.yml)'
+        required: false
+        type: string
+        default: ''
+      docker_images:
+        description: 'Images the integration tests start, pulled with a Docker Hub mirror fallback (java-test.yml)'
+        required: false
+        type: string
+        default: ''
       runner:
         description: 'Runner type'
         required: false
@@ -45,6 +60,15 @@ on:
         required: false
         type: string
         default: 'gradle'
+      run_spotless:
+        description: 'Run the Spotless formatting check inside the build job'
+        required: false
+        type: boolean
+        # Passthrough only; the behaviour and the reason live in java-build.yml and
+        # java-pr-gates.yml. Declared here because a reusable workflow forwards nothing
+        # it has not declared, and without this hop java-build.yml's default was the
+        # only reachable value.
+        default: true
 
       # Security
       run_commit_lint:
@@ -125,7 +149,7 @@ on:
         type: boolean
         default: false
       owasp_fail_on_cvss:
-        description: 'CVSS score threshold to fail (7 = HIGH+CRITICAL, 9 = CRITICAL only)'
+        description: 'Fail on any vulnerability with a CVSS score at or above this (7 = HIGH and up, 9 = CRITICAL only, 4 = MEDIUM and up)'
         required: false
         type: number
         default: 7
@@ -137,8 +161,8 @@ on:
 
       aws_role_to_assume:
         description: >-
-          IAM role ARN to assume via GitHub OIDC, threaded down to the AWS jobs
-          below. Empty keeps the static-key path.
+          Ignored. Kept so existing callers do not break; no job on a PR
+          talks to AWS.
         required: false
         type: string
         default: ''
@@ -163,39 +187,34 @@ on:
         description: 'Architecture test result'
         value: ${{ jobs.pipeline.outputs.arch_test_result }}
 
-# Least privilege for what this workflow actually does. Without it the
-# job inherits whatever the calling repository's default happens to be,
-# which on older repositories is write-all.
+# java-pr-gates.yml calls the leaves directly, so this is all it needs. Before
+# v2.7.0 this wrapped java-main-pipeline.yml and declared its whole union.
 permissions:
-  contents: write
-  packages: write
-  issues: write
-  # For the OIDC path in the AWS workflows below; a caller's grant is the
-  # ceiling for everything beneath it.
-  id-token: write
+  contents: read
+  packages: read
 
 jobs:
+  # One job with this name keeps the check names callers already require
+  # ("validate / PR Quality Gates / ...") where they were.
   pipeline:
     name: PR Quality Gates
-    uses: ./.github/workflows/java-main-pipeline.yml
+    uses: ./.github/workflows/java-pr-gates.yml
     with:
-      aws_role_to_assume: ${{ inputs.aws_role_to_assume }}
+      test_tasks: ${{ inputs.test_tasks }}
+      extra_gradle_commands: ${{ inputs.extra_gradle_commands }}
+      docker_images: ${{ inputs.docker_images }}
       runner: ${{ inputs.runner }}
       container_image: ${{ inputs.container_image }}
       java_version: ${{ inputs.java_version }}
       java_distribution: ${{ inputs.java_distribution }}
       build_tool: ${{ inputs.build_tool }}
-
-      # Security
+      run_spotless: ${{ inputs.run_spotless }}
       run_commit_lint: ${{ inputs.run_commit_lint }}
       run_trufflehog: ${{ inputs.run_trufflehog }}
       trufflehog_only_verified: ${{ inputs.trufflehog_only_verified }}
       trufflehog_fail_on_findings: ${{ inputs.trufflehog_fail_on_findings }}
       run_dependency_review: ${{ inputs.run_dependency_review }}
       dependency_review_severity: ${{ inputs.dependency_review_severity }}
-
-      # Quality gates
-      run_build: true
       run_test: ${{ inputs.run_test }}
       run_coverage: ${{ inputs.run_coverage }}
       coverage_instruction_threshold: ${{ inputs.coverage_instruction_threshold }}
@@ -207,11 +226,5 @@ jobs:
       run_owasp: ${{ inputs.run_owasp }}
       owasp_fail_on_cvss: ${{ inputs.owasp_fail_on_cvss }}
       run_architecture: ${{ inputs.run_architecture }}
-
-      # Disabled for PRs
-      run_artifact: false
-      run_deploy: false
-      run_cleanup: false
-      run_release: false   # deprecated, kept for clarity
     secrets: inherit
 ```
