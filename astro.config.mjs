@@ -8,7 +8,7 @@ import sitemap from '@astrojs/sitemap';
 
 export default defineConfig({
   output: 'static',
-  site: 'https://mypipelines.andresmontoyat.co',
+  site: 'https://mypipelines.andresmontoyat.dev',
   integrations: [
     expressiveCode({
       themes: ['dracula'],
