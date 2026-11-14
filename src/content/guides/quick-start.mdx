@@ -7,20 +7,43 @@ description: "Adoptá los pipelines en tu repo: copiá el caller, reemplazá <or
 
 # Quick Start
 
-1. Copiá los templates de tu stack a `.github/workflows/`.
+1. Copiá los templates de tu stack (`templates/<stack>-*.yml`) a `.github/workflows/`.
 2. Reemplazá `<org>` por tu organización de GitHub en cada `uses:`.
 3. Configurá los secrets requeridos (AWS/ECR, EC2 SSH, Slack).
+4. Dejá el bloque `permissions:` del template tal cual.
 
 ```yaml title=".github/workflows/main-deploy.yml"
-name: Deploy to Production
+name: Deploy to Cert
 on:
   push:
     branches: [main]
+
+# Must match java-main-pipeline's permissions block.
+permissions:
+  contents: write
+  packages: write
+  issues: write
+  pull-requests: write
+  id-token: write
+
 jobs:
   pipeline:
     uses: <org>/ci-templates/.github/workflows/java-main-pipeline.yml@v2
     with:
+      run_artifact: true
+      run_deploy: true
       deploy_target: 'ec2-vpn'
-      environment: 'prod'
+      environment: 'cert'
     secrets: inherit
 ```
+
+## Por qué importa `permissions:`
+
+Los permisos del caller son el techo de todo lo que alcanza el pipeline. GitHub los
+compara **antes de arrancar** contra cada job que el pipeline podría correr, incluso los
+que el caller apaga con un input. Si falta un solo scope, el run falla sin ejecutar
+ningún job. Cada template trae la unión exacta que pide su pipeline: si actualizás de
+versión, copiá también su bloque `permissions:`.
+
+Producción no se despliega desde `main`: sale con un tag `vX.Y.Z` creado a mano
+(`tag-deploy.yml`). Ver [GitFlow](/guides/gitflow).

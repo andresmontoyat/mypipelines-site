@@ -2,14 +2,64 @@
 title: "Deploy targets"
 slug: "deploy-targets"
 order: 3
-description: "Valores de deploy_target: ec2, ec2-vpn (WireGuard), eks, s3 — y cuándo usar cada uno."
+description: "Valores de deploy_target por stack: ec2, ec2-vpn (WireGuard), eks, gitops, s3, amplify — y cuándo usar cada uno."
 ---
 
 # Deploy targets
 
-| Valor | Destino |
-|-------|---------|
-| `ec2` | SSH a un EC2 alcanzable directo |
-| `ec2-vpn` | SSH a EC2 privado; el runner levanta un túnel WireGuard, despliega y lo baja |
-| `eks` | Cluster EKS (manifests o Helm) |
-| `s3` | Sitio estático (react/nginx) |
+| Valor | Destino | Stacks |
+|-------|---------|--------|
+| `ec2` | SSH a un EC2 alcanzable directo; `docker compose` en el host | java, krakend, nginx, contracts |
+| `ec2-vpn` | SSH a EC2 privado; el runner levanta un túnel WireGuard, despliega y lo baja | java, krakend, nginx, contracts |
+| `gitops` | Escribe la imagen (por digest) en `argocd-devops` y ArgoCD sincroniza | java, krakend, nginx |
+| `eks` | `kubectl`/Helm desde el runner. Legado: se mantiene en v2, sale en v3 | java, krakend, nginx |
+| `s3` | Sitio estático en S3 + invalidación de CloudFront | react |
+| `amplify` | Despliegue manual a AWS Amplify con polling del job | react |
+
+Firebase todavía no despliega: su pipeline termina en los tests contra el Emulator Suite.
+
+## EC2 (`ec2`, `ec2-vpn`)
+
+- **Health check y rollback.** Tras levantar el contenedor, el host hace `curl` a
+  `127.0.0.1:AWS_APP_PORT` + `health_check_path` (p. ej. `/actuator/health`) durante
+  `health_check_timeout` segundos. Sin path, usa el `HEALTHCHECK` de la imagen; sin
+  ninguno de los dos, exige que el contenedor siga en pie 20 s sin reinicios. Si falla,
+  el host vuelve a lo que corría antes y el job falla sin reintentar.
+- **Host key.** Guardá la salida de `ssh-keyscan -t ed25519 <host>`, tomada desde una red
+  de confianza, en el secret `AWS_EC2_HOST_KEY`. Sin él, el run confía en la clave que
+  presente el host y deja un warning.
+- **Login a ECR.** Si el host tiene un instance profile con permiso de pull, el pipeline
+  no le manda claves de AWS. Si no lo tiene, se las manda y avisa.
+
+## GitOps (`gitops`)
+
+CI nunca toca el cluster (ADR 0007 de `argocd-devops`). El job `deploy-gitops`
+actualiza `image.repository`, `image.tag` e `image.digest` en
+`apps/<servicio>/overlays/<entorno>/values.yaml` y no toca nada más:
+
+- los entornos de `gitops_direct_environments` (por defecto `dev`) van con commit directo a `main`;
+- el resto (stg, prod) abre un pull request que mergea una persona.
+
+Éxito significa *promovido*, no *corriendo*: la salud del despliegue la reporta ArgoCD.
+
+| Input | Default | Uso |
+|-------|---------|-----|
+| `gitops_environment` | `environment` | Overlay destino |
+| `gitops_service` | nombre del repo | Directorio bajo `apps/` |
+| `gitops_repository` | `Codehunters-IO/argocd-devops` | Repo GitOps |
+| `gitops_direct_environments` | `dev` | Entornos sin PR |
+
+Requiere una GitHub App instalada **solo** en el repo GitOps, con `contents: write` y
+`pull-requests: write`, y sus secrets `GITOPS_APP_ID` y `GITOPS_APP_PRIVATE_KEY`. El
+overlay tiene que existir y tener un bloque `image:`; si no, el job falla en vez de crearlo.
+
+## S3 (`s3`)
+
+Sincroniza en tres pasadas:
+
+1. assets con hash (`immutable_paths`, por defecto `static/,assets/`) con caché inmutable;
+2. archivos de entrada (`index.html`, etc.) con `no-cache`;
+3. borra los assets que ningún build usa desde hace más de `asset_retention_days` días
+   (7 por defecto); hasta entonces las pestañas abiertas con el HTML anterior siguen andando.
+
+`wait_for_invalidation` espera a que termine la invalidación de CloudFront.
