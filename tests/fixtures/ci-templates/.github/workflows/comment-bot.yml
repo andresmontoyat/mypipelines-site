@@ -1,0 +1,11 @@
+name: Comment Bot
+
+on:
+  issue_comment:
+    types: [created]
+
+jobs:
+  reply:
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo reply
